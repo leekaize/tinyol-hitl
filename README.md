@@ -1,24 +1,26 @@
-# Edge Adaptive ML
+# TinyOL-HITL
 
-**An open-standard framework for adaptive TinyML with human-in-the-loop learning on resource-constrained edge devices.**
+**Incremental learning framework for edge devices with human-in-the-loop adaptation.**
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Platform](https://img.shields.io/badge/platform-RP2350-green.svg)](platforms/rp2350/)
 
 ## Overview
 
-Edge Adaptive ML enables continuous learning on microcontrollers with human feedback. No cloud required.
+TinyOL-HITL enables on-device incremental learning with human feedback. No cloud dependency. Streaming algorithms. Industrial integration.
 
 **Key Features:**
-- Streaming unsupervised learning (online k-means)
-- Human-in-the-loop corrections via industrial protocols
+- Streaming k-means clustering (<100KB model footprint)
+- Human-in-the-loop corrections via MQTT
 - Flash-based model persistence
-- Memory-efficient (<100KB model footprint)
-- Industrial integration (supOS-CE, Ignition)
+- Industrial protocols (supOS-CE, Ignition)
+- 1-year battery life target
 
 **Target Hardware:**
 - RP2350 (Raspberry Pi Pico 2 W/WH) - reference implementation
-- Extensible to other Cortex-M33 platforms
+- Extensible to Cortex-M33 platforms
+
+**Baseline:** Improves on TinyOL (2021) with streaming updates and HITL integration.
 
 ## Quick Start
 
@@ -27,16 +29,16 @@ See [QUICKSTART.md](docs/guides/QUICKSTART.md) for hardware setup and first run.
 ## Architecture
 
 ```
-Sensor → Feature Extraction → Online Clustering → WiFi → UNS → Visualization
-                                        ↑                              ↓
-                                        └──────── Human Labels ────────┘
+Sensor → Features → Clustering → WiFi → supOS-CE → Ignition
+                           ↑                              ↓
+                           └──────── Human Labels ────────┘
 ```
 
 **Core Components:**
-- `core/clustering/` - Device-agnostic streaming algorithms
+- `core/clustering/` - Streaming algorithms
 - `core/persistence/` - Model state management
-- `platforms/rp2350/` - Hardware-specific implementation
-- `integrations/` - External system connectors
+- `platforms/rp2350/` - Hardware implementation
+- `integrations/` - supOS-CE and Ignition connectors
 
 ## Use Cases
 
@@ -54,24 +56,23 @@ Sensor → Feature Extraction → Online Clustering → WiFi → UNS → Visuali
 
 - [Setup Guide](docs/guides/QUICKSTART.md) - Hardware validation
 - [Technical Spec](docs/research/SPEC.md) - System architecture
-- [API Reference](docs/guides/API.md) - Function documentation
-- [Research Paper](docs/research/paper.pdf) - Academic publication
+- [Research Report](docs/research/report_outline.md) - Paper structure
 
 ## Project Status
 
-**Current:** Reference implementation on RP2350 (Pico 2 WH)
+**Phase:** Active development (Day 1 complete - toolchain validated)
 
 **Roadmap:**
-- [ ] Core algorithm library
+- [x] Toolchain validation
+- [ ] Core k-means implementation
 - [ ] RP2350 platform support
 - [ ] supOS-CE integration
-- [ ] Ignition visualization templates
-- [ ] Additional platform ports (STM32, ESP32)
-- [ ] Energy profiling tools
+- [ ] Ignition visualization
+- [ ] Energy profiling
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup and guidelines.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup.
 
 **We welcome:**
 - Platform ports
@@ -85,24 +86,30 @@ Apache-2.0 - See [LICENSE](LICENSE) for details.
 
 ## Citation
 
-If you use this framework in research, please cite:
+If you use this framework in research:
 
 ```bibtex
-@misc{edge-adaptive-ml,
+@misc{tinyol-hitl,
   author = {Lee Kai Ze},
-  title = {Edge Adaptive ML: An Open-Standard, Adaptive TinyML Framework for Unsupervised Condition Monitoring and Human-in-the-Loop Learning on Edge Devices},
+  title = {TinyOL-HITL: Incremental Learning Framework for Edge Devices with Human-in-the-Loop},
   year = {2025},
   publisher = {GitHub},
-  url = {https://github.com/leekaize/edge-adaptive-ml}
+  url = {https://github.com/leekaize/tinyol-hitl}
 }
 ```
 
+## References
+
+**Baseline:** TinyOL (2021) - On-device learning with 256KB model, batch processing.
+
+**Our improvements:** Streaming updates, <100KB memory, HITL integration, industrial protocols.
+
 ## Contact
 
-- GitHub Issues: Bug reports and feature requests
-- Discussions: Architecture questions and use cases
-- Email: mail@leekaize.com (research collaboration)
+- **Issues:** Bug reports and feature requests
+- **Discussions:** Architecture questions and use cases
+- **Email:** mail@leekaize.com (research collaboration)
 
 ---
 
-**Built for:** Researchers, embedded engineers, industrial IoT developers
+**Built for:** Embedded researchers, industrial IoT developers, edge ML practitioners
