@@ -1,0 +1,36 @@
+# Build artifacts
+build/
+*.elf
+*.bin
+*.uf2
+*.hex
+*.map
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.env
+
+# macOS
+.DS_Store
+
+# Test outputs
+test_results/
+*.log
+
+# Documentation builds
+docs/_build/
+*.pdf
+
+# Temporary files
+tmp/
+*.tmp
