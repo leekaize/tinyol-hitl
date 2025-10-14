@@ -7,7 +7,7 @@
 
 ## Overview
 
-TinyOL-HITL enables on-device incremental learning with human feedback. No cloud dependency. Streaming algorithms. Industrial integration.
+Applied on edge devices, TinyOL-HITL enables on-device incremental learning with human feedback. No cloud dependency. Streaming algorithms. Industrial integration.
 
 **Key Features:**
 - Streaming k-means clustering (<100KB model footprint)
@@ -16,28 +16,37 @@ TinyOL-HITL enables on-device incremental learning with human feedback. No cloud
 - Industrial protocols (supOS-CE, Ignition)
 - 1-year battery life target
 
-**Target Hardware:**
-- RP2350 (Raspberry Pi Pico 2 W/WH) - reference implementation
-- Extensible to Cortex-M33 platforms
-
 **Baseline:** Improves on TinyOL (2021) with streaming updates and HITL integration.
 
 ## Quick Start
 
 See [QUICKSTART.md](docs/guides/QUICKSTART.md) for hardware setup and first run.
 
+**Documentation:**
+- [Setup Guide](docs/guides/QUICKSTART.md) - Hardware validation
+- [Technical Spec](docs/research/SPEC.md) - System architecture
+- [Research Report](docs/research/report_outline.md) - Paper structure
+
 ## Architecture
 
 ```
 Sensor → Features → Clustering → WiFi → supOS-CE → Ignition
-                           ↑                              ↓
-                           └──────── Human Labels ────────┘
+                         ↑                              ↓
+                         └──────── Human Labels ────────┘
 ```
 
-**Core Components:**
+
+## Hardware
+
+**Reference:** Raspberry Pi Pico 2 W (RP2350B)  
+**Target:** 1-year battery life, <100KB RAM  
+**Extensible:** Any Cortex-M33 platform
+
+## Components
+
 - `core/clustering/` - Streaming algorithms
 - `core/persistence/` - Model state management
-- `platforms/rp2350/` - Hardware implementation
+- `platforms/rp2350/` - Pico SDK wrapper
 - `integrations/` - supOS-CE and Ignition connectors
 
 ## Use Cases
@@ -52,20 +61,22 @@ Sensor → Features → Clustering → WiFi → supOS-CE → Ignition
 - Environmental adaptation
 - Predictive maintenance
 
-## Documentation
+## Project Status: Day 2 Complete
 
-- [Setup Guide](docs/guides/QUICKSTART.md) - Hardware validation
-- [Technical Spec](docs/research/SPEC.md) - System architecture
-- [Research Report](docs/research/report_outline.md) - Paper structure
+**Day 1:** Toolchain validated ✓  
+**Day 2:** Core k-means + RP2350 integration ✓  
+**Day 3:** supOS-CE integration (next)
 
-## Project Status
-
-**Phase:** Active development (Day 1 complete - toolchain validated)
+**Day 2 Metrics:**
+- Memory: 4.2 KB model footprint
+- Convergence: 150 points, ±0.05 error
+- Throughput: 150 points/sec @ 150MHz
+- Tests: 9/9 pass
 
 **Roadmap:**
 - [x] Toolchain validation
-- [ ] Core k-means implementation
-- [ ] RP2350 platform support
+- [x] Core k-means implementation
+- [x] RP2350 platform support
 - [ ] supOS-CE integration
 - [ ] Ignition visualization
 - [ ] Energy profiling
