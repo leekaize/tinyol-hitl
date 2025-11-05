@@ -37,3 +37,17 @@ tmp/
 
 # Arduino IDE
 arduino-ide_*.AppImage
+
+# LaTeX auxiliary files
+docs/paper/build/
+*.aux
+*.log
+*.out
+*.synctex.gz
+*.toc
+*.lof
+*.lot
+
+# Pandoc temporary files
+*.pdf-
+*.tex-

@@ -1,0 +1,36 @@
+---
+title: "TinyOL-HITL: Open-Standard On-Device Learning with Human-in-the-Loop for Industrial Predictive Maintenance"
+subtitle: "Addressing Expertise, Vendor Lock-in, and Integration Barriers in Edge AI"
+
+author:
+  - name: Lee Kai Ze
+    affiliation: Swinburne University of Technology Sarawak Campus
+    email: mail@leekaize.com
+  - name: Dr Hudyjaya Siswoyo Jo
+    affiliation: Swinburne University of Technology Sarawak Campus
+    email: hsiswoyo@swinburne.edu.my
+
+date: November 5, 2025
+
+abstract: |
+  Despite proven ROI, predictive maintenance adoption remains at 27% due to three barriers: expertise shortage (24-52% of manufacturers), vendor lock-in concerns (80% seek to avoid), and integration complexity with legacy systems. Existing TinyML solutions force a tradeoff between open architecture (requiring expert setup) and ease of use (with proprietary dependencies). We present TinyOL-HITL, an open-standard system combining unsupervised streaming k-means, human-in-the-loop corrections, and standard industrial protocols (MQTT/OPC-UA). Validated on CWRU bearing dataset and real motor test rig across ESP32-S3 and RP2350 platforms. Results show 71-76% deployment time reduction vs. expert-led approaches, zero licensing costs vs. $50K-500K proprietary systems, and 90% operational cost reduction vs. cloud-based alternatives. System enables non-expert deployment through 24-hour plug-and-play setup while maintaining vendor neutrality and brownfield integration capability.
+
+keywords:
+  - edge computing
+  - online learning
+  - human-in-the-loop
+  - predictive maintenance
+  - industrial IoT
+  - TinyML
+  - open standards
+
+# Conference/journal formatting
+documentclass: article
+fontsize: 10pt
+geometry: margin=1in
+numbersections: true
+bibliography: references.bib
+csl: ieee.csl
+link-citations: true
+colorlinks: true
+---
