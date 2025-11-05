@@ -1,12 +1,15 @@
 # RP2350 Platform Layer
 
+> [!warning]
+> Deprecated! Only for reference.
+
 Hardware wrapper for Raspberry Pi Pico 2 W/WH.
 
 ## Hardware
 
-**Board:** Raspberry Pi Pico 2 W (RP2350B + CYW43439 WiFi)  
-**Clock:** 150 MHz (default)  
-**RAM:** 520 KB available  
+**Board:** Raspberry Pi Pico 2 W (RP2350B + CYW43439 WiFi)
+**Clock:** 150 MHz (default)
+**RAM:** 520 KB available
 **Flash:** 4 MB (XIP)
 
 ## Build
@@ -45,15 +48,15 @@ Or screen: `screen /dev/ttyACM0 115200`
 
 ## LED Indicators
 
-**On boot:** 3 blinks (200ms interval)  
-**Processing:** Rapid flicker (10ms per point)  
+**On boot:** 3 blinks (200ms interval)
+**Processing:** Rapid flicker (10ms per point)
 **Complete:** Long-short-long pattern (infinite loop)
 
 ## Test Behavior
 
 Generates 150 synthetic points from 3 clusters:
 - Cluster A: (-1, -1) ± 0.2
-- Cluster B: (1, 1) ± 0.2  
+- Cluster B: (1, 1) ± 0.2
 - Cluster C: (0, 0) ± 0.2
 
 Prints stats every 50 points. Converges in <1 second.
@@ -67,8 +70,8 @@ Prints stats every 50 points. Converges in <1 second.
 
 ## Performance
 
-**Throughput:** 150 points/sec @ 150MHz  
-**Memory:** 4.2 KB model + 16 KB stack  
+**Throughput:** 150 points/sec @ 150MHz
+**Memory:** 4.2 KB model + 16 KB stack
 **Power:** ~40 mA active (USB serial enabled)
 
 ## Notes
