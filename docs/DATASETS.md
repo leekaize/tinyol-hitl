@@ -184,20 +184,15 @@ data/datasets/cwru/
 
 ## Platform-Specific Notes
 
-**ESP32:**
+**ESP32-S3:**
 - Use SD.h library for SD card access
-- WiFi can stream results during testing
+- WiFi streams results during testing
 - 520 KB RAM handles large buffers
 
 **RP2350:**
 - LittleFS for flash storage
 - SD card via SPI
 - Similar memory to ESP32
-
-**Arduino Uno/Mega:**
-- Limited RAM (2KB/8KB)
-- SD card essential for datasets
-- Serial streaming works but slower
 
 ## Quick Start: Test on Hardware
 

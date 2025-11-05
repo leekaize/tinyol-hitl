@@ -4,7 +4,7 @@ Real motor. Real faults. Real validation. Three platforms tested with identical 
 
 ## Goal
 
-Generate distinguishable vibration signatures. Validate streaming k-means against physical reality. Compare ESP32, RP2350, Arduino performance on identical hardware.
+Generate distinguishable vibration signatures. Validate streaming k-means against physical reality. Compare ESP32 and RP2350 performance on identical hardware.
 
 ## Motor Specifications
 
@@ -45,10 +45,6 @@ Generate distinguishable vibration signatures. Validate streaming k-means agains
   #define PLATFORM_RP2350
   #define HAS_WIFI
   // I²C: GP4 (SDA), GP5 (SCL)
-#elif defined(ARDUINO_AVR_UNO)
-  #define PLATFORM_ARDUINO
-  // I²C: A4 (SDA), A5 (SCL)
-#endif
 ```
 
 **One sketch. Three platforms. Zero manual pin changes.**
@@ -84,17 +80,6 @@ GND      →       GND (Pin 38)
 SDA      →       GP4 (Pin 6)
 SCL      →       GP5 (Pin 7)
 CS       →       3V3 (I²C mode)
-```
-
-**Arduino Uno/Mega:**
-```
-ADXL345          Arduino
---------         --------
-VCC      →       3.3V (if available) or 5V with level shifter
-GND      →       GND
-SDA      →       A4 (Uno) / SDA pin (Mega)
-SCL      →       A5 (Uno) / SCL pin (Mega)
-CS       →       VCC (I²C mode)
 ```
 
 **Critical:** ADXL345 is 3.3V device. Arduino runs 5V. Use level shifter or 3.3V supply.
@@ -271,7 +256,7 @@ outer_race_1500_01.txt
 - [ ] Induction motor (0.5-2 HP)
 - [ ] VFD
 - [ ] ADXL345 accelerometer
-- [ ] One dev board (ESP32 or RP2350 recommended)
+- [ ] ESP32-S3 or RP2350 dev board
 - [ ] Power supply (5V, 2A for MCU)
 - [ ] USB cable
 - [ ] Safety guard around motor
@@ -287,7 +272,6 @@ outer_race_1500_01.txt
 **Method:**
 1. Run identical test on ESP32
 2. Run identical test on RP2350
-3. Run identical test on Arduino (if RAM sufficient)
 
 **Metrics:**
 - Cluster formation speed
@@ -341,11 +325,6 @@ outer_race_1500_01.txt
 - Board: Raspberry Pi Pico 2 W
 - Port: /dev/ttyACM0 (Linux) or COM4 (Windows)
 - Upload Speed: default
-
-**Arduino:**
-- Board: Arduino Uno/Mega
-- Port: /dev/ttyACM0 (Linux) or COM5 (Windows)
-- Upload Speed: 115200
 
 **Verification:** Upload blink sketch first. LED works? Proceed to sensor test.
 

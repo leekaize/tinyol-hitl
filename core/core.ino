@@ -1,11 +1,10 @@
 /**
  * @file core.ino
- * @brief Streaming k-means for ESP32, RP2350, Arduino
+ * @brief Streaming k-means for ESP32-S3 and RP2350
  *
  * Select board in Arduino IDE:
  * - ESP32: ESP32S3 Dev Module
  * - RP2350: Raspberry Pi Pico 2 W
- * - Arduino: Uno/Nano/Mega + WiFi shield
  */
 
 #include "config.h"
@@ -27,10 +26,9 @@ void setup() {
     Serial.println("ESP32-S3");
   #elif defined(PLATFORM_RP2350)
     Serial.println("RP2350 (Pico 2 W)");
-  #elif defined(PLATFORM_ARDUINO)
-    Serial.println("Arduino (AVR)");
   #else
-    Serial.println("Generic Arduino");
+    Serial.println("ERROR: Unsupported platform");
+    while (1) platform_blink(10);
   #endif
 
   platform_init();

@@ -29,7 +29,7 @@ Fixes #123
 **Types:** fix | feat | perf | refactor | docs | test
 
 **Merge criteria:**
-- Arduino sketch compiles (ESP32, RP2350, Arduino)
+- Arduino sketch compiles (ESP32, RP2350)
 - Tests pass (core/clustering/test_kmeans)
 - Linked to issue
 
@@ -50,7 +50,7 @@ Fixes #123
 
 **Required:**
 - Unit test for new algorithms
-- Test on real hardware before PR
+- Test on ESP32-S3 or RP2350 before PR
 - Include Arduino IDE verification screenshot
 
 **CWRU dataset:** Validate on public data. Post confusion matrix.

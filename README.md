@@ -3,7 +3,7 @@
 Open-standard streaming k-means for edge devices. Arduino IDE. Multi-platform.
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Platforms](https://img.shields.io/badge/Platforms-ESP32%20%7C%20RP2350%20%7C%20Arduino-blue.svg)](core/)
+[![Platforms](https://img.shields.io/badge/Platforms-ESP32%20%7C%20RP2350-blue.svg)](core/)
 
 ## Problem
 
@@ -49,25 +49,22 @@ https://espressif.github.io/arduino-esp32/package_esp32_index.json,https://githu
 |----------|------|--------|-------|----------|
 | ESP32-S3 | ✓ | 520 KB | 240 MHz | Production (WiFi + MQTT) |
 | RP2350 (Pico 2 W) | ✓ | 520 KB | 150 MHz | Power comparison |
-| Arduino Uno/Nano | ✗ | 2 KB | 16 MHz | Serial logging only |
-| Arduino Mega | ✗ | 8 KB | 16 MHz | Larger models, Serial |
-| + WiFi Shield | ✓ | Varies | Varies | Budget WiFi option |
 
 ## Project Structure
 ```
-core/                # Arduino sketch (tri-platform)
+core/                # Arduino sketch (ESP32 + RP2350)
 libraries/           # MQTT connector
 integrations/        # supOS-CE, RapidSCADA
 data/datasets/cwru/  # Download, convert tools
 hardware/test_rig/   # Motor specs, wiring
 tools/power_profiling/ # Current measurement
-platforms/rp2350/    # Native SDK reference
+platforms/rp2350/    # Native SDK reference (deprecated)
 ```
 
-## Why Arduino
+## Why Arduino IDE
 
 Pragmatic for <30 days:
-- Single codebase, any Arduino board
+- Single codebase, support MCU of different brands
 - Mature WiFi/MQTT libraries
 - 5-second upload iteration
 - No toolchain setup
@@ -77,7 +74,7 @@ Pragmatic for <30 days:
 
 **Test Rig:** 0.5 HP motor, ADXL345 sensor, 3 platforms
 **Dataset:** CWRU bearing faults (public, reproducible)
-**Power:** ESP32 vs RP2350 vs Arduino comparison
+**Power:** ESP32 vs RP2350 comparison
 
 ## Use Cases
 

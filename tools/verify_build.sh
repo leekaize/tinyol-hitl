@@ -1,5 +1,5 @@
 #!/bin/bash
-# Verify Arduino sketch compiles for all platforms
+# Verify Arduino sketch compiles for supported platforms
 
 set -e
 
@@ -18,9 +18,4 @@ arduino-cli compile --fqbn rp2040:rp2040:rpipico2w $SKETCH
 echo "   ✓ RP2350 OK"
 echo
 
-echo "3. Arduino Uno"
-arduino-cli compile --fqbn arduino:avr:uno $SKETCH
-echo "   ✓ Arduino OK (may warn about memory)"
-echo
-
-echo "=== All Platforms Verified ==="
+echo "=== Both Platforms Verified ==="

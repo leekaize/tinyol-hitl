@@ -1,6 +1,6 @@
 # Wiring Diagram
 
-Sensor connections for ESP32, RP2350, Arduino platforms.
+Sensor connections for ESP32 and RP2350 platforms.
 
 ## Power Supply
 ```
@@ -34,19 +34,6 @@ SDA      →       GP4 (Pin 6)
 SCL      →       GP5 (Pin 7)
 CS       →       3V3 (I²C mode)
 ```
-
-**Arduino Uno/Mega:**
-```
-ADXL345          Arduino
---------         --------
-VCC      →       5V or 3.3V
-GND      →       GND
-SDA      →       A4 (Uno) / SDA (Mega)
-SCL      →       A5 (Uno) / SCL (Mega)
-CS       →       VCC (I²C mode)
-```
-
-**Note:** ADXL345 is 3.3V device. If using 5V Arduino, add level shifters or use 3.3V supply.
 
 ## I²C Pull-up Resistors
 
@@ -94,11 +81,6 @@ Press E-Stop → Opens circuit → VFD stops motor immediately.
 - GP4/5 are default I²C pins
 - CYW43 WiFi chip onboard
 - Power via USB or VSYS (5V)
-
-**Arduino:**
-- A4/A5 (Uno) or dedicated SDA/SCL pins (Mega)
-- No WiFi unless shield attached
-- Power via USB or barrel jack (7-12V)
 
 ## Shielding
 

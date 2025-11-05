@@ -23,9 +23,9 @@ Learning rate decays as cluster sees more points. Prevents drift from establishe
 ## Platform Requirements
 
 **Minimum:**
-- 2 KB RAM (Arduino Uno: tight fit, 3 clusters × 2 features)
-- 8 KB RAM (Arduino Mega: comfortable, 10 clusters × 4 features)
-- 520 KB RAM (ESP32/RP2350: any size model)
+- 520 KB RAM (ESP32/RP2350 both meet this)
+- WiFi capability (both platforms native)
+- Arduino IDE support
 
 **Static allocation only.** No malloc. Deterministic memory. Predictable behavior.
 
@@ -49,10 +49,6 @@ Three functions. Core algorithm stays pure. Platform handles I/O.
 **RP2350 specifics:**
 - WiFi via CYW43, LittleFS storage
 - Dual-core ARM (unused in MVP)
-
-**Arduino specifics:**
-- EEPROM storage, Serial logging
-- Optional WiFi shield (WiFi101, ESP8266)
 
 ## Data Flow
 
@@ -111,12 +107,10 @@ MCU → WiFi/Serial → MQTT Broker/Serial Monitor → supOS-CE/RapidSCADA → W
 **Throughput:**
 - ESP32: 200 samples/sec @ 240 MHz
 - RP2350: 150 samples/sec @ 150 MHz
-- Arduino: 50 samples/sec @ 16 MHz
 
 **Power:**
 - ESP32: 45 mA active, 10 µA sleep
 - RP2350: 35 mA active, 0.8 mA sleep
-- Arduino: 20 mA active, 15 µA sleep
 
 ## Memory Layout
 
@@ -133,13 +127,6 @@ MCU → WiFi/Serial → MQTT Broker/Serial Monitor → supOS-CE/RapidSCADA → W
 0x20000000 - 0x20014000: WiFi (CYW43) firmware (80 KB)
 0x20014000 - 0x20015400: K-means model (5 KB)
 0x20015400 - 0x20080000: Unused (435 KB margin)
-```
-
-**Arduino Uno (2 KB SRAM):**
-```
-0x0100 - 0x0300: Stack (512 B)
-0x0300 - 0x0700: K-means model (1 KB, 3×2 clusters)
-0x0700 - 0x0900: Heap (512 B margin)
 ```
 
 ## Dataset Integration
@@ -161,12 +148,10 @@ MCU → WiFi/Serial → MQTT Broker/Serial Monitor → supOS-CE/RapidSCADA → W
 - Simplest unsupervised algorithm (200 lines C)
 - Lowest memory (linear in K and D)
 - Proven convergence (Bottou 1998)
-- Fits Arduino Uno (2 KB RAM)
 
 **Why not neural networks?**
 - Backprop memory overhead (gradients)
 - Convergence requires batch
-- Too large for Arduino
 
 **Why not GMM?**
 - Covariance matrices: O(D²) memory
@@ -174,7 +159,7 @@ MCU → WiFi/Serial → MQTT Broker/Serial Monitor → supOS-CE/RapidSCADA → W
 - Computational cost too high
 
 **Why fixed-point?**
-- No FPU on AVR (Arduino) or Cortex-M33 (RP2350)
+- No FPU on Cortex-M33 (RP2350)
 - ESP32 has FPU, but fixed-point is portable
 - 16.16 format sufficient for condition monitoring
 

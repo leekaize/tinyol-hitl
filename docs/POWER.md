@@ -4,7 +4,7 @@ Measure. Compare. Optimize. Three platforms. One year battery target.
 
 ## Why This Matters
 
-Battery life = deployment viability. Industrial sensors run for months without charging. Architecture choice (Xtensa vs ARM vs AVR) impacts power budget. Measure to decide.
+Battery life = deployment viability. Industrial sensors run for months without charging. Architecture choice (Xtensa vs ARM) impacts power budget. Measure to decide.
 
 ## 1-Year Battery Target
 
@@ -98,7 +98,7 @@ void loop() {
 **1. Idle (WiFi off)**
 - No sensor reading, no processing
 - Duration: 60 seconds
-- Measures: ESP32 vs RP2350 vs Arduino idle current
+- Measures: ESP32 vs RP2350 idle current
 
 **2. Sensor Reading + Inference**
 - Read ADXL345, run k-means
@@ -146,17 +146,7 @@ void loop() {
 
 **Flash write:** 15 mA spike (8 ms)
 
-### Arduino Uno (No WiFi)
-
-**Idle:** 15-20 mA (16 MHz AVR, power LED on)
-
-**Inference:** 20-25 mA
-
-**Sleep (power-down mode):** 15 µA
-
-**EEPROM write:** 18 mA spike (4 ms)
-
-**Hypothesis:** RP2350 lowest idle/sleep. ESP32 highest compute performance. Arduino lowest active for simple tasks.
+**Hypothesis:** RP2350 lower idle/sleep power. ESP32 higher compute performance.
 
 ## Optimization Strategies
 
@@ -217,14 +207,14 @@ setCpuFrequencyMhz(240); // Boost for WiFi
 
 **Create table:**
 
-| Metric | ESP32-S3 | RP2350 | Arduino | Winner |
+| Metric | ESP32-S3 | Winner |
 |--------|----------|--------|---------|--------|
-| Idle current | [X mA] | [Y mA] | [Z mA] | [Platform] |
-| Inference current @ max MHz | [X mA] | [Y mA] | [Z mA] | [Platform] |
-| WiFi TX burst | [X mA] | [Y mA] | N/A | [Platform] |
-| Sleep current | [X µA] | [Y µA] | [Z µA] | [Platform] |
-| Energy per 1000 samples | [X mJ] | [Y mJ] | [Z mJ] | [Platform] |
-| Battery life (95% sleep) | [X days] | [Y days] | [Z days] | [Platform] |
+| Idle current | [X mA] | [Y mA] | [Platform] |
+| Inference current @ max MHz | [X mA] | [Y mA] | [Platform] |
+| WiFi TX burst | [X mA] | [Y mA] | [Platform] |
+| Sleep current | [X µA] | [Y µA] | [Platform] |
+| Energy per 1000 samples | [X mJ] | [Y mJ] | [Platform] |
+| Battery life (95% sleep) | [X days] | [Y days] | [Platform] |
 
 **Winner criteria:** Lowest average current for target duty cycle (5% active, 95% sleep).
 
@@ -235,8 +225,6 @@ setCpuFrequencyMhz(240); // Boost for WiFi
 **ESP32-S3 datasheet:** 40 mA active, 10 µA deep sleep
 
 **RP2350 datasheet:** 50 mA active @ 150 MHz, 0.18 mA dormant
-
-**Arduino Uno datasheet:** 20 mA active, 15 µA power-down
 
 **If mismatch >20%:** Check measurement setup. Verify no external peripherals drawing current.
 

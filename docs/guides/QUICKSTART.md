@@ -24,7 +24,7 @@ Tools → Manage Libraries → Search "PubSubClient" → Install
 **4. Upload Sketch**
 ```bash
 File → Open → core/core.ino
-Tools → Board → Select your board
+Tools → Board → Select ESP32-S3 or RP2350
 Tools → Port → Select USB port
 Sketch → Upload
 ```

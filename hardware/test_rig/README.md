@@ -15,7 +15,6 @@ Induction motor with real bearing faults. Tri-platform validation.
 ## Platforms Tested
 1. **ESP32-S3:** WiFi, MQTT to SCADA (primary)
 2. **RP2350 (Pico 2 W):** WiFi, power comparison
-3. **Arduino Uno + ESP8266:** Budget option, Serial logging
 
 ## Operating Conditions
 See `operating_conditions.md` for fault scenarios.
