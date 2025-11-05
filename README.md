@@ -1,186 +1,109 @@
 # TinyOL-HITL
 
-Open-standard framework for on-device incremental learning with human feedback. No cloud. Streaming algorithms. Industrial integration.
+Open-standard streaming k-means for edge devices. Arduino IDE. Multi-platform.
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Platforms](https://img.shields.io/badge/ESP32-Xtensa-green.svg)](platforms/esp32/)
-[![Platforms](https://img.shields.io/badge/RP2350-ARM-blue.svg)](platforms/rp2350/)
+[![Platforms](https://img.shields.io/badge/Platforms-ESP32%20%7C%20RP2350%20%7C%20Arduino-blue.svg)](core/)
 
 ## Problem
 
-Commercial TinyML stacks lock you in. TensorFlow Lite Micro does inference, not training. Edge Impulse charges per device. Neurala is closed-source.
+Commercial TinyML locks you in. Inference only. Per-device fees. Closed protocols.
 
-You need: streaming learning, human corrections, open protocols, vendor freedom.
+You need: streaming learning, human corrections, open standards, vendor freedom.
 
 ## Solution
 
-Platform-agnostic framework. ESP32 and RP2350 reference implementations. Streaming k-means (<100KB RAM). MQTT to open-source SCADA (supOS-CE, RapidSCADA). Human-in-the-loop via industrial HMI.
+Single Arduino sketch. Any board (ESP32, RP2350, Arduino, others). Streaming k-means (<100KB RAM). MQTT to open-source SCADA. Human-in-the-loop.
 
-Validate with public datasets (CWRU bearing data) and real hardware (induction motor test rig).
-
-## Architecture
-
-```
-Sensor → Feature Extraction → Streaming K-Means → MQTT
-                                     ↓
-                              Flash Persistence
-                                     ↑
-                              SCADA (supOS/RapidSCADA)
-                                     ↓
-                              Human Corrections
-```
-
-Two validation paths:
-- **Hardware:** Induction motor with accelerometer (real faults)
-- **Datasets:** CWRU/MFPT bearing data (reproducibility)
-
-## Platforms
-
-**ESP32-S3 (Xtensa LX7)**
-- 240 MHz, 520 KB SRAM
-- WiFi + Bluetooth
-- FreeRTOS
-
-**RP2350B (ARM Cortex-M33)**
-- 150 MHz, 520 KB SRAM  
-- WiFi via CYW43439
-- Bare-metal + Pico SDK
-
-Same memory budget. Different architectures. Power comparison is key metric.
+Validate with CWRU dataset and hardware test rig.
 
 ## Quick Start
 
-**Test core algorithm:**
+**Install (5 min)**
 ```bash
-cd core/clustering
-gcc -o test test_kmeans.c streaming_kmeans.c -lm
-./test  # 9 tests, <1 second
+# Download Arduino IDE: https://www.arduino.cc/en/software
+# File → Preferences → Additional Board Manager URLs:
+https://espressif.github.io/arduino-esp32/package_esp32_index.json,https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json
+
+# Tools → Board Manager: Install "esp32" and "Raspberry Pi Pico/RP2040/RP2350"
+# Tools → Manage Libraries: Install "PubSubClient"
 ```
 
-**Flash RP2350:**
+**Upload (2 min)**
 ```bash
-cd platforms/rp2350/build
-cmake .. -DPICO_BOARD=pico2_w
-make
-# Copy kmeans_test.uf2 to Pico in BOOTSEL mode
+# File → Open → core/core.ino
+# Tools → Board: Select your board
+# Tools → Port: Select USB port
+# Sketch → Upload
 ```
 
-**Monitor output:**
+**Monitor**
 ```bash
-minicom -D /dev/ttyACM0 -b 115200
+# Tools → Serial Monitor (115200 baud)
+# See: Platform detected, WiFi connected, Model initialized
 ```
 
-**Stream CWRU dataset:**
-```bash
-cd data/streaming
-python3 cwru_to_mcu.py --output binary/bearing_fault.bin
-# Load via SD card or UART to MCU
+## Supported Platforms
+
+| Platform | WiFi | Memory | Speed | Use Case |
+|----------|------|--------|-------|----------|
+| ESP32-S3 | ✓ | 520 KB | 240 MHz | Production (WiFi + MQTT) |
+| RP2350 (Pico 2 W) | ✓ | 520 KB | 150 MHz | Power comparison |
+| Arduino Uno/Nano | ✗ | 2 KB | 16 MHz | Serial logging only |
+| Arduino Mega | ✗ | 8 KB | 16 MHz | Larger models, Serial |
+| + WiFi Shield | ✓ | Varies | Varies | Budget WiFi option |
+
+## Project Structure
+```
+core/                # Arduino sketch (tri-platform)
+libraries/           # MQTT connector
+integrations/        # supOS-CE, RapidSCADA
+data/datasets/cwru/  # Download, convert tools
+hardware/test_rig/   # Motor specs, wiring
+tools/power_profiling/ # Current measurement
+platforms/rp2350/    # Native SDK reference
 ```
 
-## Project Status
+## Why Arduino
 
-**Day 2 Complete (2025-10-14):**
-- Core k-means: 9/9 tests pass
-- RP2350 platform: synthetic test working
-- Memory: 4.2 KB model footprint
-- Throughput: 150 points/sec @ 150 MHz
+Pragmatic for <30 days:
+- Single codebase, any Arduino board
+- Mature WiFi/MQTT libraries
+- 5-second upload iteration
+- No toolchain setup
+- Community support
 
-**Next 30 Days:**
-- ESP32 platform implementation
-- CWRU dataset streaming to MCU
-- supOS-CE + RapidSCADA integration
-- Hardware test rig validation
-- Power consumption profiling
-- Final report
+## Hardware Validation
 
-## Documentation
-
-- **[ARCHITECTURE.md](docs/ARCHITECTURE.md)** - System design, memory layout, algorithm details
-- **[DATASETS.md](docs/DATASETS.md)** - CWRU/MFPT streaming, MCU binary format
-- **[HARDWARE.md](docs/HARDWARE.md)** - Test rig setup, operating conditions, sensor placement
-- **[POWER.md](docs/POWER.md)** - Profiling methodology, ESP32 vs RP2350 comparison
-- **[QUICKSTART.md](docs/guides/QUICKSTART.md)** - Build instructions, first run
-
-## Repository Structure
-
-```
-tinyol-hitl/
-├── core/clustering/        # Platform-agnostic streaming k-means
-├── platforms/
-│   ├── esp32/              # Xtensa LX7 implementation
-│   └── rp2350/             # ARM Cortex-M33 implementation
-├── integrations/
-│   ├── supos/              # supOS-CE MQTT connector
-│   └── rapidscada/         # RapidSCADA Modbus/OPC-UA
-├── data/
-│   ├── datasets/           # CWRU, MFPT loaders
-│   └── streaming/          # Convert to MCU binary format
-├── hardware/test_rig/      # Induction motor setup, operating conditions
-└── tools/power_profiling/  # INA219/PPK2 measurement scripts
-```
-
-## Why This Matters
-
-**Research contribution:** First open-standard TinyML framework with on-device training, HITL, and industrial integration.
-
-**Engineering contribution:** Dual-platform validation. Public dataset reproducibility. Vendor-agnostic protocols.
-
-**Baseline to beat:** TinyOL (2021) - 256KB model, batch learning, no HITL.
-
-**Our targets:**
-- Memory: <100KB model
-- Accuracy: 15-25% improvement with HITL corrections
-- Latency: <2s label-to-model-update
-- Power: 1-year battery life (low-power mode dominant)
+**Test Rig:** 0.5 HP motor, ADXL345 sensor, 3 platforms
+**Dataset:** CWRU bearing faults (public, reproducible)
+**Power:** ESP32 vs RP2350 vs Arduino comparison
 
 ## Use Cases
 
-**Condition Monitoring:**
-- Vibration anomaly detection (bearings, motors, pumps)
-- Acoustic pattern recognition (leak detection, tool wear)
-- Temperature trend analysis (predictive maintenance)
+**Condition Monitoring:** Bearing faults, motor health, leak detection
+**Edge Intelligence:** Continuous learning, no cloud, operator feedback
 
-**Edge Intelligence:**
-- User behavior learning without cloud
-- Environmental adaptation (noise, lighting)
-- Continuous learning from operator feedback
+## Documentation
+
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - System design
+- [docs/DATASETS.md](docs/DATASETS.md) - CWRU methodology
+- [docs/HARDWARE.md](docs/HARDWARE.md) - Test rig setup
+- [docs/POWER.md](docs/POWER.md) - Profiling guide
+- [hardware/test_rig/](hardware/test_rig/) - Wiring diagrams
+- [integrations/](integrations/) - SCADA integration
 
 ## Contributing
 
-Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for workflow.
+See [CONTRIBUTING.md](CONTRIBUTING.md).
 
-**Priority areas:**
-- Platform ports (STM32, nRF52)
-- Algorithm improvements (adaptive learning rate strategies)
-- SCADA integrations (Modbus RTU, OPC-UA)
-- Power optimization
+**Priority:** <30 days. Ship working code. Perfect later.
 
 ## License
 
-Apache-2.0. See [LICENSE](LICENSE).
-
-Industrial-friendly. No GPL restrictions. Fork freely.
-
-## Citation
-
-```bibtex
-@mastersthesis{lee2025tinyol,
-  author = {Lee, Kai Ze},
-  title = {An Open-Standard TinyML Framework for Unsupervised Condition Monitoring with Human-in-the-Loop Learning on Edge Devices},
-  school = {[Your University]},
-  year = {2025},
-  url = {https://github.com/leekaize/tinyol-hitl}
-}
-```
-
-## Contact
-
-**Issues:** Bug reports, feature requests  
-**Discussions:** Architecture questions, use cases  
-**Email:** mail@leekaize.com (collaboration only)
+Apache-2.0. Industrial-friendly. Fork freely.
 
 ---
 
-**Built for:** Embedded ML researchers, industrial IoT engineers, open-source advocates
-
-**Validated with:** CWRU bearing dataset, real induction motor test rig, dual-platform power profiling
+**Built for:** Embedded ML researchers, industrial IoT engineers
+**Validated with:** CWRU dataset, tri-platform comparison, hardware test rig
