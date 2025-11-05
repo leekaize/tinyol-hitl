@@ -8,12 +8,7 @@ Research project. <30 days to delivery. Move fast.
 
 **Types:** BUG | FEATURE | TASK
 
-**Required:**
-- What happens now
-- What should happen
-- How to reproduce (bugs) or why it matters (features)
-
-Use issue templates in `.github/ISSUE_TEMPLATE/`.
+Use templates in `.github/ISSUE_TEMPLATE/`.
 
 ## Pull Requests
 
@@ -26,7 +21,7 @@ Use issue templates in `.github/ISSUE_TEMPLATE/`.
 ```
 type: what changed (50 chars max)
 
-Why it matters. What breaks without it.
+Why it matters.
 
 Fixes #123
 ```
@@ -34,9 +29,8 @@ Fixes #123
 **Types:** fix | feat | perf | refactor | docs | test
 
 **Merge criteria:**
-- Tests pass
-- Code works on both platforms (ESP32 + RP2350)
-- No new warnings
+- Arduino sketch compiles (ESP32, RP2350, Arduino)
+- Tests pass (core/clustering/test_kmeans)
 - Linked to issue
 
 ## Code Standards
@@ -57,16 +51,16 @@ Fixes #123
 **Required:**
 - Unit test for new algorithms
 - Test on real hardware before PR
-- Include test results in PR description
+- Include Arduino IDE verification screenshot
 
 **CWRU dataset:** Validate on public data. Post confusion matrix.
 
 ## Priority
 
 **Critical path (ship first):**
-1. ESP32 platform working
+1. Arduino sketch working (3 platforms)
 2. CWRU dataset streaming
-3. Power profiling complete
+3. Hardware test rig validation
 
 **Nice-to-have (defer if time short):**
 - Additional platforms

@@ -58,10 +58,11 @@ Payload: {"cluster_id": 2, "label": "bearing_fault", "operator": "user_123"}
 4. Enable MQTT binding for all attributes
 
 **MCU connection:**
-```c
-mqtt_cfg.broker.address.uri = "mqtt://192.168.1.100:1883";
-mqtt_cfg.credentials.username = "device_esp32_001";
-mqtt_cfg.credentials.password = "device_token";
+```cpp
+#include <MQTTConnector.h>
+MQTTConnector mqtt("192.168.1.100", 1883, "esp32_001");
+mqtt.connect();
+mqtt.publishCluster(cluster_id, features, feature_dim);
 ```
 
 ## Time-Series Storage

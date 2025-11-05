@@ -1,6 +1,6 @@
 # Architecture
 
-System design for dual-platform on-device learning with human corrections.
+System design for multi-platform on-device learning with human corrections.
 
 ## Core Algorithm
 
@@ -16,49 +16,49 @@ Learning rate decays as cluster sees more points. Prevents drift from establishe
 
 **Memory:** K × D × 4 bytes + metadata. Example: 10 clusters × 32 features = 1.28 KB.
 
-**Precision:** Q16.16 fixed-point. ARM and Xtensa both have fast 32-bit multiply.
+**Precision:** Q16.16 fixed-point. ARM, Xtensa, AVR all have 32-bit multiply.
 
 **Distance:** Squared Euclidean. No sqrt. Saves 30% compute per sample.
 
 ## Platform Requirements
 
-**Memory budget:**
-- WiFi stack: 80 KB
-- Model (10 clusters × 32 features): 1.3 KB
-- Training buffer: 50 KB
-- Code: 20 KB
-- Margin: 370 KB
+**Minimum:**
+- 2 KB RAM (Arduino Uno: tight fit, 3 clusters × 2 features)
+- 8 KB RAM (Arduino Mega: comfortable, 10 clusters × 4 features)
+- 520 KB RAM (ESP32/RP2350: any size model)
 
 **Static allocation only.** No malloc. Deterministic memory. Predictable behavior.
 
 **Cluster count:** Fixed at compile time. Trade flexibility for safety.
 
-## Hardware Abstraction
+## Platform Abstraction
 
-**Platform API:**
-```c
-platform_status_t platform_init(model, k, dim, lr);
-uint8_t platform_process_point(model, point);
-void platform_print_stats(model);
+**Core API:**
+```cpp
+void platform_init();           // WiFi, LED, storage
+void platform_loop();           // Reconnect logic
+void platform_blink(uint8_t n); // Visual feedback
 ```
 
-Three functions. Core algorithm stays pure. Platform handles I/O, LED, serial.
+Three functions. Core algorithm stays pure. Platform handles I/O.
 
 **ESP32 specifics:**
-- FreeRTOS task management
-- ESP-IDF component system
-- NVS for flash persistence
+- WiFi native, NVS storage
+- FreeRTOS (unused in MVP)
 
 **RP2350 specifics:**
-- Pico SDK bare-metal
-- Multicore Arm (unused in v1)
-- USB stdio via TinyUSB
+- WiFi via CYW43, LittleFS storage
+- Dual-core ARM (unused in MVP)
+
+**Arduino specifics:**
+- EEPROM storage, Serial logging
+- Optional WiFi shield (WiFi101, ESP8266)
 
 ## Data Flow
 
 **Inference path:**
 ```
-Sensor → ADC → Feature → K-means → Cluster ID → MQTT → SCADA
+Sensor → ADC → Feature → K-means → Cluster ID → MQTT/Serial → SCADA
 ```
 
 **Training path:**
@@ -70,7 +70,7 @@ SCADA → Human Label → MQTT → Update Centroid → Flash → Persist
 
 ## Communication Protocol
 
-**MQTT topics:**
+**MQTT topics (WiFi platforms):**
 ```
 sensor/device_id/data          # Streaming features
 sensor/device_id/cluster       # Assigned cluster
@@ -78,55 +78,45 @@ sensor/device_id/correction    # Human label (subscribe)
 sensor/device_id/model         # Centroid updates (publish on change)
 ```
 
-**QoS 0:** Speed over reliability. Lost sample acceptable. Lost label is not—handled at SCADA layer.
+**Serial protocol (non-WiFi):**
+```
+> CLUSTER:2,FEATURES:[0.32,-0.15,0.08]\n
+< CORRECTION:2,LABEL:bearing_fault\n
+```
+
+**QoS:** 0 for data stream, 1 for corrections.
 
 ## Integration Architecture
-
 ```
-MCU → WiFi → MQTT Broker → supOS-CE/RapidSCADA → Ignition/Web HMI
-                               ↓
-                          PostgreSQL (label history)
-                               ↑
-                          Analytics (Python)
+MCU → WiFi/Serial → MQTT Broker/Serial Monitor → supOS-CE/RapidSCADA → Web HMI
+                                                      ↓
+                                                 PostgreSQL (label history)
+                                                      ↑
+                                                 Analytics (Python)
 ```
 
 **supOS-CE:** Unified namespace. Tag-based routing. MQTT native.
 
 **RapidSCADA:** Modbus RTU/TCP. OPC-UA. Open-source. Windows/Linux.
 
-**Choice:** Use supOS if pure MQTT. Use RapidSCADA if legacy Modbus infrastructure exists.
-
-## Baseline Comparison
-
-**TinyOL (2021):**
-- Memory: 256 KB model
-- Method: Batch k-means (100 samples, then update)
-- HITL: None
-- Platform: Single (STM32)
-
-**Our framework:**
-- Memory: <100 KB model
-- Method: Streaming (update per sample)
-- HITL: Via MQTT corrections
-- Platform: Dual (ESP32 + RP2350)
-
-**Target improvement:** 15-25% accuracy with HITL. Measured against CWRU baseline without corrections.
+**Choice:** supOS for pure MQTT. RapidSCADA for legacy Modbus infrastructure.
 
 ## Performance Targets
 
 **Latency:**
 - Sample → Cluster: <50 ms
-- Label → Update: <2 s
+- Label → Update: <2 s (WiFi), <5 s (Serial)
 - WiFi transmit: 1 Hz
 
 **Throughput:**
+- ESP32: 200 samples/sec @ 240 MHz
 - RP2350: 150 samples/sec @ 150 MHz
-- ESP32: TBD (target 200 samples/sec @ 240 MHz)
+- Arduino: 50 samples/sec @ 16 MHz
 
 **Power:**
-- Active: 40-50 mA (WiFi on)
-- Sleep: <1 mA (WiFi off, flash retention)
-- Battery: 1 year @ 10 Ah (95% sleep, 5% active)
+- ESP32: 45 mA active, 10 µA sleep
+- RP2350: 35 mA active, 0.8 mA sleep
+- Arduino: 20 mA active, 15 µA sleep
 
 ## Memory Layout
 
@@ -135,20 +125,22 @@ MCU → WiFi → MQTT Broker → supOS-CE/RapidSCADA → Ignition/Web HMI
 0x00000 - 0x14000: FreeRTOS kernel + WiFi (80 KB)
 0x14000 - 0x15400: K-means model (5 KB)
 0x15400 - 0x27000: Training buffer (71 KB)
-0x27000 - 0x32000: Application stack (44 KB)
-0x32000 - 0x80000: Heap (312 KB margin)
+0x27000 - 0x80000: Heap (364 KB margin)
 ```
 
 **RP2350 (520 KB SRAM):**
 ```
 0x20000000 - 0x20014000: WiFi (CYW43) firmware (80 KB)
 0x20014000 - 0x20015400: K-means model (5 KB)
-0x20015400 - 0x20027000: Training buffer (71 KB)
-0x20027000 - 0x20032000: Stack (44 KB)
-0x20032000 - 0x20080000: Unused (312 KB margin)
+0x20015400 - 0x20080000: Unused (435 KB margin)
 ```
 
-Same layout. Portable code. Different addresses.
+**Arduino Uno (2 KB SRAM):**
+```
+0x0100 - 0x0300: Stack (512 B)
+0x0300 - 0x0700: K-means model (1 KB, 3×2 clusters)
+0x0700 - 0x0900: Heap (512 B margin)
+```
 
 ## Dataset Integration
 
@@ -159,8 +151,8 @@ Same layout. Portable code. Different addresses.
 - Interface: SD card or UART
 
 **Validation:**
-- Hardware: Real motor + sensor (operational)
-- Dataset: CWRU/MFPT (reproducibility)
+- Hardware: Real motor + sensor (ESP32/RP2350)
+- Dataset: CWRU/MFPT (all platforms via Serial)
 - Metrics: Confusion matrix, accuracy, F1 score
 
 ## Algorithm Decisions
@@ -169,11 +161,12 @@ Same layout. Portable code. Different addresses.
 - Simplest unsupervised algorithm (200 lines C)
 - Lowest memory (linear in K and D)
 - Proven convergence (Bottou 1998)
+- Fits Arduino Uno (2 KB RAM)
 
 **Why not neural networks?**
 - Backprop memory overhead (gradients)
 - Convergence requires batch
-- Harder to explain to operators
+- Too large for Arduino
 
 **Why not GMM?**
 - Covariance matrices: O(D²) memory
@@ -181,7 +174,7 @@ Same layout. Portable code. Different addresses.
 - Computational cost too high
 
 **Why fixed-point?**
-- No FPU on Cortex-M33 (RP2350)
+- No FPU on AVR (Arduino) or Cortex-M33 (RP2350)
 - ESP32 has FPU, but fixed-point is portable
 - 16.16 format sufficient for condition monitoring
 
@@ -199,6 +192,6 @@ Same layout. Portable code. Different addresses.
 
 **Multi-sensor fusion:** Vibration + temperature + current. Extend feature dimension.
 
-**OTA updates:** Flash new model via MQTT. Bootloader support needed.
+**OTA updates:** Flash new model via MQTT (ESP32/RP2350 only).
 
 **Energy harvesting:** Solar or vibration. Battery becomes backup, not primary.

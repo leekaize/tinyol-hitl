@@ -35,10 +35,10 @@ unzip KpMqtt_6.0.zip
 1. Open Communicator settings
 2. Add device → MQTT Client
 3. Broker: localhost:1883
-4. Topics: sensor/+/data, sensor/+/cluster
+4. Topics: `sensor/+/data`, `sensor/+/cluster`
 5. QoS: 0 for data, 1 for corrections
 
-## Modbus RTU (Direct Sensor)**
+## Modbus RTU (Direct Sensor)
 
 Alternative to WiFi. RS485 wired connection.
 
@@ -52,7 +52,7 @@ Alternative to WiFi. RS485 wired connection.
 - 40004: Cluster ID (uint16)
 
 **MCU code:**
-```c
+```cpp
 // Respond to Modbus read (function code 0x03)
 modbus_set_holding_register(40001, feature[0]);
 modbus_set_holding_register(40002, feature[1]);
@@ -79,7 +79,7 @@ Bridge to existing PLCs/DCS systems.
 
 **Setup OPC-UA server:**
 1. Install KpOpcUa driver
-2. Configure endpoint: opc.tcp://localhost:4840
+2. Configure endpoint: `opc.tcp://localhost:4840`
 3. Map MQTT topics to OPC-UA nodes
 
 **Node structure:**

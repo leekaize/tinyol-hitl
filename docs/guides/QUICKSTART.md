@@ -1,21 +1,38 @@
 # Quick Start
 
-**1. Test core algorithm:**
+**1. Install Arduino IDE**
 ```bash
-cd core/clustering
-gcc -o test_kmeans test_kmeans.c streaming_kmeans.c -lm
-./test_kmeans
+# Download: https://www.arduino.cc/en/software
+# Or: sudo apt install arduino  # Linux
 ```
 
-**2. Flash RP2350:**
-```bash
-cd platforms/rp2350/build
-cmake .. -DPICO_BOARD=pico2_w -DPICO_SDK_PATH=$HOME/pico-sdk
-make
-# Copy kmeans_test.uf2 to Pico in BOOTSEL mode
+**2. Add Board Support**
+```
+File → Preferences → Additional Board Manager URLs:
+https://espressif.github.io/arduino-esp32/package_esp32_index.json,https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json
+
+Tools → Board → Boards Manager:
+- Search "ESP32" → Install
+- Search "Pico" → Install
 ```
 
-**3. View output:**
-```bash
-minicom -D /dev/ttyACM0 -b 115200
+**3. Install Libraries**
 ```
+Tools → Manage Libraries → Search "PubSubClient" → Install
+```
+
+**4. Upload Sketch**
+```bash
+File → Open → core/core.ino
+Tools → Board → Select your board
+Tools → Port → Select USB port
+Sketch → Upload
+```
+
+**5. Monitor Output**
+```
+Tools → Serial Monitor (115200 baud)
+See: Platform detected, WiFi connected, Model initialized
+```
+
+**Done.** Under 10 minutes.
