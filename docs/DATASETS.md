@@ -1,16 +1,16 @@
 # Datasets
 
-Public bearing fault datasets for reproducible validation. Stream to MCU. Compare against published baselines.
+Public bearing fault datasets for reproducible validation. Arduino IDE workflow. Stream to any platform.
 
 ## Why Public Datasets
 
-**Reproducibility:** Anyone can verify your results using same data.
+**Reproducibility:** Anyone verifies your results with same data.
 
-**Comparison:** Direct apples-to-apples with published papers.
+**Comparison:** Direct benchmark against published papers.
 
-**Development speed:** Test algorithm today. Don't wait for hardware.
+**Development speed:** Test algorithm today. Hardware waits.
 
-**Risk mitigation:** Motor breaks? Stream dataset instead.
+**Risk mitigation:** Motor breaks? Dataset keeps you moving.
 
 ## CWRU Bearing Dataset
 
@@ -18,7 +18,7 @@ Public bearing fault datasets for reproducible validation. Stream to MCU. Compar
 
 **URL:** https://engineering.case.edu/bearingdatacenter
 
-**Most cited dataset in bearing fault detection literature.** Your results directly comparable.
+**Most cited dataset in bearing fault literature.** Your results directly comparable.
 
 **Structure:**
 - 4 fault types: Ball, Inner race, Outer race, Normal
@@ -30,202 +30,230 @@ Public bearing fault datasets for reproducible validation. Stream to MCU. Compar
 
 **Size:** ~240 files, ~2 GB total
 
-## MFPT Bearing Dataset
+## Conversion Pipeline
 
-**Source:** Machinery Failure Prevention Technology Society
+**Goal:** .mat files → Fixed-point binary → Arduino sketch
 
-**URL:** https://mfpt.org/fault-data-sets/
-
-**Alternative validation source.** High sampling rate. Different fault scenarios.
-
-**Structure:**
-- Outer race, inner race, ball faults
-- 3 sensor positions
-- Sampling rate: 97,656 Hz
-- Baseline: 6 seconds nominal condition
-
-**File format:** MATLAB .mat files
-
-**Size:** ~20 files, ~500 MB total
-
-## Streaming to MCU
-
-**Challenge:** MCU has no filesystem. No MATLAB. No floating-point luxury.
-
-**Solution:** Convert offline. Stream binary. Fixed-point format.
-
-### Conversion Pipeline
-
-**Step 1: Download**
+### Step 1: Download
 ```bash
 cd data/datasets/cwru
-python3 download.py  # Fetches all files from Case website
+python3 download.py  # Fetches from Case website
 ```
 
-**Step 2: Extract features**
+### Step 2: Extract Features
 ```bash
 python3 extract_features.py --input raw/ --output features/
-# RMS, kurtosis, crest factor per 256-sample window
+# RMS, kurtosis, crest factor, variance per 256-sample window
 ```
 
-**Step 3: Convert to fixed-point binary**
+### Step 3: Convert to Binary
 ```bash
 python3 to_binary.py --input features/ --output binary/
-# Q16.16 format, little-endian, 4 bytes per sample
+# Q16.16 format, MCU-compatible
 ```
 
-**Step 4: Load to MCU**
-- SD card: Copy .bin file, read via SPI
-- UART: Stream via USB serial at 115200 baud
-- Flash: Embed in firmware (only for small datasets)
+### Step 4: Integration Methods
 
-### Binary Format
-
-**Header (16 bytes):**
-```
-uint32_t magic;           // 0x4B4D4541 ("KMEA")
-uint16_t num_samples;     // Sample count in file
-uint8_t  feature_dim;     // Features per sample
-uint8_t  fault_type;      // 0=normal, 1=ball, 2=inner, 3=outer
-uint32_t sample_rate;     // Original sampling rate (Hz)
-uint32_t reserved;        // Future use
+**Option A: SD Card (Recommended for testing)**
+```cpp
+// In core.ino after setup()
+#include <SD.h>
+File dataFile = SD.open("bearing_fault.bin");
+// Read header, stream samples to kmeans_update()
 ```
 
-**Data (num_samples × feature_dim × 4 bytes):**
+**Option B: Serial Streaming**
+```cpp
+// Stream from PC via Serial
+// Python script sends binary, Arduino reads
+while (Serial.available() >= 4) {
+  fixed_t sample = readFixedFromSerial();
+  kmeans_update(&model, &sample);
+}
 ```
-fixed_t sample_0[feature_dim];
-fixed_t sample_1[feature_dim];
-...
-fixed_t sample_N[feature_dim];
+
+**Option C: Flash Embedding (Small datasets only)**
+```cpp
+// Add to core.ino
+const PROGMEM fixed_t dataset[] = {/* binary data */};
+// Loop through array, feed to kmeans_update()
 ```
 
-Fixed-point format: Q16.16 (16 integer bits, 16 fractional bits).
+## Binary Format Specification
 
-Range: -32768.0 to +32767.99998.
+### Header (16 bytes)
+```c
+struct dataset_header {
+    uint32_t magic;         // 0x4B4D4541 ("KMEA")
+    uint16_t num_samples;   // Sample count
+    uint8_t  feature_dim;   // Features per sample
+    uint8_t  fault_type;    // 0=normal, 1=ball, 2=inner, 3=outer
+    uint32_t sample_rate;   // Original rate (Hz)
+    uint32_t reserved;      // Future use
+};
+```
 
-### Feature Extraction
+### Data Section
+```c
+fixed_t samples[num_samples][feature_dim];  // Q16.16 format
+```
 
-**Time domain (4 features per window):**
-- RMS (root mean square): Overall energy
-- Kurtosis: Impulsiveness (bearing faults spike)
-- Crest factor: Peak-to-RMS ratio
-- Variance: Spread
+**Q16.16 fixed-point:**
+- 16 integer bits, 16 fractional bits
+- Range: -32768.0 to +32767.99998
+- Conversion: `int32_t = float * 65536`
 
-**Window size:** 256 samples at 12 kHz = 21 ms
+## Feature Extraction Details
+
+**Time domain (4 features per 256-sample window):**
+
+**RMS:** `sqrt(mean(x²))` - Overall energy
+
+**Kurtosis:** `E[(x - μ)⁴] / σ⁴` - Impulsiveness
+
+**Crest Factor:** `max(|x|) / RMS` - Peak ratio
+
+**Variance:** `E[(x - μ)²]` - Spread
+
+**Window:** 256 samples @ 12 kHz = 21 ms
 
 **Overlap:** 50% (128 samples)
 
-**Why these features:** Proven in bearing fault literature. Low compute. Interpretable.
+**Why these:** Low compute. Proven in literature. Interpretable.
 
-**Frequency domain (optional, 8 features):**
-- FFT magnitude at bearing fault frequencies
-- BPFO (ball pass outer race frequency)
-- BPFI (ball pass inner race frequency)
-- BSF (ball spin frequency)
-- FTF (fundamental train frequency)
+## Arduino IDE Integration
 
-Trade: 10x compute for 5-10% accuracy gain. Test both.
+### Example Sketch Extension
+```cpp
+// Add to core.ino for dataset streaming
+
+void streamDataset() {
+  // Read from SD or Serial
+  fixed_t point[FEATURE_DIM];
+
+  while (readNextSample(point)) {
+    uint8_t cluster = kmeans_update(&model, point);
+
+    Serial.printf("Sample %lu -> Cluster %d\n",
+                  model.total_points, cluster);
+
+    // Print stats every 100 samples
+    if (model.total_points % 100 == 0) {
+      printConfusionMatrix();
+    }
+  }
+}
+```
 
 ## Validation Methodology
 
 **Split:** 70% train, 30% test. Stratified by fault type.
 
-**Streaming simulation:**
-1. Load binary to MCU flash or SD card
-2. Stream samples one-by-one to k-means
-3. Every 1000 samples: print confusion matrix
-4. Final: accuracy, precision, recall, F1
-
 **Baseline (no HITL):**
-- Stream all training samples
-- Test on held-out set
-- Record accuracy
+1. Stream training samples
+2. Test on held-out set
+3. Record accuracy
 
 **With HITL:**
-- Stream training samples
-- Inject 10% label corrections (simulate expert)
-- Test on held-out set
-- Measure improvement
+1. Stream training samples
+2. Inject 10% corrections (simulated expert)
+3. Test on held-out set
+4. Measure improvement
 
-**Target:** 15-25% accuracy improvement with HITL vs baseline.
+**Target:** 15-25% accuracy gain with HITL vs baseline.
 
-## Papers Using CWRU
+## Published Baselines (CWRU)
 
-Search for these to extract baselines:
+Search these for comparison:
+- "CNN for bearing faults" (2016): 99.5% accuracy
+- "Deep learning rotating machinery" (2018): 98.7% accuracy
+- "Edge AI predictive maintenance" (2021): 94.2% on MCU
 
-- "Bearing fault diagnosis using CNN" (2016) - 99.5% accuracy
-- "Deep learning for rotating machinery" (2018) - 98.7% accuracy
-- "Edge AI for predictive maintenance" (2021) - 94.2% accuracy on MCU
+**Your contribution:** Streaming + HITL. Theirs: Batch inference.
 
-Your contribution: streaming learning + HITL. Theirs: batch inference.
-
-## Scripts
-
-**data/datasets/cwru/download.py:**
-```python
-# Fetch all .mat files from CWRU website
-# ~2 GB, 10 minutes on fast connection
+## File Organization
+```
+data/datasets/cwru/
+├── download.py          # Fetch from Case website
+├── extract_features.py  # Compute features
+├── to_binary.py         # Convert to MCU format
+├── raw/                 # .mat files (gitignored)
+├── features/            # .csv files (gitignored)
+└── binary/              # .bin files (gitignored)
 ```
 
-**data/datasets/cwru/extract_features.py:**
-```python
-# RMS, kurtosis, crest, variance per window
-# Input: .mat files
-# Output: .csv (one row per window)
+## Platform-Specific Notes
+
+**ESP32:**
+- Use SD.h library for SD card access
+- WiFi can stream results during testing
+- 520 KB RAM handles large buffers
+
+**RP2350:**
+- LittleFS for flash storage
+- SD card via SPI
+- Similar memory to ESP32
+
+**Arduino Uno/Mega:**
+- Limited RAM (2KB/8KB)
+- SD card essential for datasets
+- Serial streaming works but slower
+
+## Quick Start: Test on Hardware
+
+**1. Prepare Dataset**
+```bash
+cd data/datasets/cwru
+python3 download.py
+python3 extract_features.py --input raw/ --output features/
+python3 to_binary.py --input features/ --output binary/
 ```
 
-**data/datasets/cwru/to_binary.py:**
-```python
-# Convert .csv to Q16.16 binary
-# Add header with metadata
-# Output: .bin (MCU-compatible)
+**2. Copy to SD Card**
+```bash
+cp binary/normal_1000_01.bin /media/SD_CARD/
 ```
 
-**platforms/rp2350/stream_dataset.c:**
-```c
-// Read .bin from SD card
-// Feed samples to k-means one-by-one
-// Print confusion matrix every 1000 samples
+**3. Modify core.ino**
+```cpp
+// Add SD reading logic after setup()
+// Stream samples to kmeans_update()
 ```
 
-**platforms/esp32/stream_dataset.c:**
-```c
-// Same as RP2350 version
-// FreeRTOS task reads from SPIFFS
+**4. Upload and Monitor**
 ```
-
-## File Locations
-
+Tools → Serial Monitor (115200 baud)
+Watch clustering in real-time
 ```
-data/
-├── datasets/
-│   ├── cwru/
-│   │   ├── download.py
-│   │   ├── extract_features.py
-│   │   ├── to_binary.py
-│   │   ├── raw/              # .mat files (gitignored)
-│   │   ├── features/         # .csv files (gitignored)
-│   │   └── binary/           # .bin files (gitignored)
-│   └── mfpt/
-│       └── (same structure)
-└── streaming/
-    ├── README.md
-    └── (MCU streaming code lives in platforms/)
-```
-
-**.gitignore:** Add raw/, features/, binary/ directories. Too large for repo.
-
-**README in data/:** Instructions for downloading and converting.
 
 ## Reproducibility Checklist
 
-- [ ] Download scripts fetch exact files from original sources
-- [ ] Feature extraction uses published formulas (cite papers)
-- [ ] Binary format documented with byte-level spec
-- [ ] Validation split (70/30) seeded for reproducibility
-- [ ] Baseline metrics match published papers (±2% acceptable)
-- [ ] HITL improvement measured against same baseline
-- [ ] Confusion matrices saved for each test run
-- [ ] Power consumption measured during dataset streaming
+- [ ] Download scripts fetch exact files
+- [ ] Feature formulas documented (cite papers)
+- [ ] Binary format byte-level spec complete
+- [ ] Validation split seeded (reproducible)
+- [ ] Baseline metrics match literature (±2%)
+- [ ] HITL improvement measured vs baseline
+- [ ] Confusion matrices saved per run
 
-Ship binary conversion scripts first. Test on RP2350. Then ESP32.
+## Next Steps for MVP
+
+1. **Test conversion pipeline** - Verify one .mat file end-to-end
+2. **SD card integration** - Add SD reading to core.ino
+3. **Serial monitor validation** - Watch clustering happen
+4. **Confusion matrix** - Add tracking to sketch
+5. **Hardware test** - Compare dataset vs real motor
+
+**Priority:** Get one dataset file streaming through Arduino sketch. Perfect later.
+
+## Advanced: MFPT Dataset
+
+**Source:** Machinery Failure Prevention Technology Society
+
+**URL:** https://mfpt.org/fault-data-sets/
+
+**Structure:** 97,656 Hz sampling, 3 sensor positions
+
+**Status:** Pipeline TBD. CWRU sufficient for MVP.
+
+Ship CWRU integration first. Expand coverage later.

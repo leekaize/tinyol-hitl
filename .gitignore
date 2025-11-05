@@ -34,3 +34,6 @@ docs/_build/
 # Temporary files
 tmp/
 *.tmp
+
+# Arduino IDE
+arduino-ide_*.AppImage

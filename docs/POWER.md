@@ -1,66 +1,59 @@
 # Power Profiling
 
-Measure. Compare. Optimize. ESP32 vs RP2350 power consumption across operating modes.
+Measure. Compare. Optimize. Three platforms. One year battery target.
 
 ## Why This Matters
 
-Battery life determines deployment viability. 1-year target requires <1% active duty cycle.
+Battery life = deployment viability. Industrial sensors run for months without charging. Architecture choice (Xtensa vs ARM vs AVR) impacts power budget. Measure to decide.
 
-Architecture choice (Xtensa vs ARM) impacts power budget. Measure to decide.
+## 1-Year Battery Target
 
-## Target Budget
-
-**1-year battery life calculation:**
+**Calculation:**
 - Battery: 10,000 mAh @ 3.7V = 37 Wh
-- Average current: 37 Wh / (365 days × 24 hours) = 4.2 mA
-- Duty cycle: 5% active (WiFi on), 95% sleep (WiFi off)
+- Average current needed: 37 Wh / (365 days × 24 hours) = 4.2 mA
+- Duty cycle: 5% active (sampling), 95% sleep
 
 **Allowed current:**
-- Active mode: 50 mA × 0.05 = 2.5 mA average contribution
-- Sleep mode: 1 mA × 0.95 = 0.95 mA average contribution
+- Active mode: 50 mA × 0.05 = 2.5 mA avg contribution
+- Sleep mode: 1 mA × 0.95 = 0.95 mA avg contribution
 - Total: 3.45 mA average (target: <4.2 mA)
 
 **Verdict:** Achievable if sleep mode <1 mA and active <50 mA.
 
 ## Measurement Tools
 
-### Nordic PPK2
+### Nordic PPK2 (Recommended)
 
-**Best tool.** Purpose-built for MCU power profiling.
+**Best tool for MCU profiling.**
 
-**Range:** 1 µA to 1 A
+**Specs:**
+- Range: 1 µA to 1 A
+- Resolution: 200 nA
+- Sampling: 100 kHz (captures WiFi spikes)
+- Price: $100
+- Interface: USB, desktop software
 
-**Resolution:** 200 nA
+**Why:** Captures fast transients. MQTT bursts visible.
 
-**Sampling:** 100 kHz (captures WiFi spikes)
+### INA219 (Budget Option)
 
-**Price:** $100
+**$10 I²C current sensor.**
 
-**Interface:** USB, desktop software
-
-### INA219
-
-**Budget option.** I²C current sensor.
-
-**Range:** 0-3.2 A
-
-**Resolution:** 0.8 mA
-
-**Sampling:** ~100 Hz (misses fast transients)
-
-**Price:** $10
-
-**Interface:** I²C to another MCU or Raspberry Pi
+**Specs:**
+- Range: 0-3.2 A
+- Resolution: 0.8 mA
+- Sampling: ~100 Hz (misses fast transients)
+- Interface: I²C to Raspberry Pi or another Arduino
 
 **Limitation:** Misses WiFi TX bursts (<10 ms). Use for steady-state only.
 
-### Oscilloscope + Shunt
+### Oscilloscope + Shunt (Lab-Grade)
 
-**Lab-grade accuracy.** Requires bench equipment.
+**For precision measurements.**
 
 **Setup:** 0.1Ω shunt resistor in series with VDD. Measure voltage drop.
 
-**Resolution:** Limited by scope (1 mV = 10 mA for 0.1Ω)
+**Math:** Current = V_shunt / 0.1Ω
 
 **Advantage:** Captures all transients. Time-correlate with logic analyzer.
 
@@ -68,69 +61,64 @@ Architecture choice (Xtensa vs ARM) impacts power budget. Measure to decide.
 
 ## Methodology
 
-### Setup
-
-**Power path:**
+### Power Path Setup
 ```
-Battery/PSU → Power Meter → MCU → GND
+Battery/Bench PSU → Power Meter → MCU VDD → GND
 ```
 
-Insert meter between power source and MCU VDD pin. Measure current continuously.
+**Critical:** Insert meter between power source and MCU. Don't measure via USB (voltage drops under load).
 
-**Software instrumentation:**
-```c
-// Mark measurement regions with GPIO toggle
-gpio_set(DEBUG_PIN, 1);   // Start region
-perform_inference();
-gpio_set(DEBUG_PIN, 0);   // End region
+### Arduino IDE Integration
+
+**Add debug markers to core.ino:**
+```cpp
+void setup() {
+  pinMode(DEBUG_PIN, OUTPUT);
+  // ... rest of setup
+}
+
+void loop() {
+  digitalWrite(DEBUG_PIN, HIGH);  // Mark measurement region
+
+  // Process samples
+  sensors_event_t event;
+  accel.getEvent(&event);
+  uint8_t cluster = kmeans_update(&model, features);
+
+  digitalWrite(DEBUG_PIN, LOW);   // End measurement region
+
+  delay(100);  // Sampling interval
+}
 ```
 
-Logic analyzer on DEBUG_PIN synchronizes power trace with code execution.
+**Logic analyzer on DEBUG_PIN syncs power trace with code execution.**
 
-### Operating Modes
+### Operating Modes to Profile
 
-**Baseline (idle):**
-- WiFi off, no processing
-- Measure: ESP32 vs RP2350 idle current
+**1. Idle (WiFi off)**
+- No sensor reading, no processing
 - Duration: 60 seconds
+- Measures: ESP32 vs RP2350 vs Arduino idle current
 
-**WiFi connection:**
-- Connect to AP, establish MQTT
-- Measure: connection burst energy
-- Duration: 5 seconds
-
-**Inference (no WiFi):**
-- Stream CWRU dataset, run k-means
-- Measure: compute current at 150/240 MHz
+**2. Sensor Reading + Inference**
+- Read ADXL345, run k-means
 - Duration: 1000 samples
+- Measures: Compute current at full speed
 
-**WiFi transmit:**
+**3. WiFi TX (ESP32/RP2350 only)**
 - Send cluster ID via MQTT (QoS 0)
-- Measure: TX burst energy
-- Duration: 100 ms
+- Duration: 100 ms burst
+- Measures: TX energy per publish
 
-**Deep sleep:**
+**4. Deep Sleep**
 - WiFi off, CPU halted, RAM retained
-- Measure: sleep current
 - Duration: 60 seconds
+- Measures: Sleep current
 
-**Flash write:**
-- Persist model to flash
-- Measure: write energy
+**5. Flash Write**
+- Persist model to NVS/LittleFS/EEPROM
 - Duration: ~10 ms
-
-### Data Collection
-
-**Record per mode:**
-- Mean current (mA)
-- Peak current (mA)
-- Energy (mAh or µWh)
-- Duration (ms)
-
-**Calculate:**
-- Average power: P_avg = V × I_mean
-- Energy per operation: E = P_avg × duration
-- Duty cycle: % time in each mode
+- Measures: Write energy
 
 ## Expected Results
 
@@ -146,7 +134,7 @@ Logic analyzer on DEBUG_PIN synchronizes power trace with code execution.
 
 **Flash write:** 20 mA spike (10 ms)
 
-### RP2350
+### RP2350 (Pico 2 W)
 
 **Idle:** 2-5 mA (CYW43 dormant)
 
@@ -158,68 +146,85 @@ Logic analyzer on DEBUG_PIN synchronizes power trace with code execution.
 
 **Flash write:** 15 mA spike (8 ms)
 
-**Hypothesis:** RP2350 lower idle/sleep. ESP32 higher compute performance. Measure to verify.
+### Arduino Uno (No WiFi)
+
+**Idle:** 15-20 mA (16 MHz AVR, power LED on)
+
+**Inference:** 20-25 mA
+
+**Sleep (power-down mode):** 15 µA
+
+**EEPROM write:** 18 mA spike (4 ms)
+
+**Hypothesis:** RP2350 lowest idle/sleep. ESP32 highest compute performance. Arduino lowest active for simple tasks.
 
 ## Optimization Strategies
 
-### Reduce Active Time
-
+### 1. Reduce Active Time
 **Strategy:** Process faster, sleep more.
 
 **Tactics:**
-- Increase clock speed during inference (finish faster)
-- Batch MQTT messages (one TX per 100 samples, not per sample)
-- Pre-compute lookup tables (avoid runtime calculation)
+- Increase clock during inference (finish faster)
+- Batch MQTT messages (one TX per 100 samples)
+- Pre-compute lookup tables
 
-**Tradeoff:** Higher peak current, but shorter duration. Net energy savings if sleep time increases.
+**Trade:** Higher peak current, shorter duration. Net energy savings if sleep increases.
 
-### WiFi Power Management
-
+### 2. WiFi Power Management
 **Strategy:** Disconnect when idle.
 
-**Tactics:**
-- Modem sleep: WiFi off between transmissions (saves 100 mA)
-- Light sleep: CPU halted, wake on timer (saves 30 mA)
-- Deep sleep: Full power-down, wake on interrupt (saves 40 mA)
+**Arduino IDE example:**
+```cpp
+#ifdef HAS_WIFI
+void smartSleep() {
+  WiFi.disconnect(true);  // Turn off radio
+  WiFi.mode(WIFI_OFF);
+  delay(60000);           // Sleep 60 seconds
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+}
+#endif
+```
 
-**Tradeoff:** Reconnection overhead. Measure connection energy (1-2 seconds @ 150 mA).
+**Trade:** Reconnection overhead (1-2 seconds @ 150 mA).
 
 **Decision:** If transmit interval >10 seconds, disconnect WiFi. Otherwise keep modem sleep.
 
-### Clock Scaling
-
+### 3. Clock Scaling
 **Strategy:** Run slower when accuracy allows.
 
-**Tactics:**
-- Inference at 80 MHz (not 240 MHz) if latency acceptable
-- Dynamic frequency scaling (DFS): boost for WiFi, drop for compute
+**Arduino IDE example (ESP32):**
+```cpp
+setCpuFrequencyMhz(80);  // Drop from 240 MHz to 80 MHz
+// Do inference
+setCpuFrequencyMhz(240); // Boost for WiFi
+```
 
-**Tradeoff:** Latency vs energy. Measure energy-delay product (EDP = E × t²).
+**Trade:** Latency vs energy. Measure energy-delay product (EDP = E × t²).
 
 **Decision:** Minimize EDP, not just energy. Faster sometimes wins.
 
-### Flash Wear vs Power
-
+### 4. Flash Wear vs Power
 **Strategy:** Write less frequently.
 
 **Tactics:**
-- Buffer 100 updates, write once (vs write every update)
-- Only persist on significant model change (centroid moved >threshold)
+- Buffer 100 updates, write once
+- Only persist on significant model change
 
-**Tradeoff:** Data loss risk if power fails. Acceptable for non-critical applications.
+**Trade:** Data loss risk if power fails. Acceptable for non-critical applications.
 
 ## Comparison Metrics
 
 **Create table:**
 
-| Metric | ESP32-S3 | RP2350 | Winner |
-|--------|----------|--------|--------|
-| Idle current | [X mA] | [Y mA] | [Platform] |
-| Inference current @ max MHz | [X mA] | [Y mA] | [Platform] |
-| WiFi TX burst | [X mA] | [Y mA] | [Platform] |
-| Sleep current | [X µA] | [Y µA] | [Platform] |
-| Energy per 1000 samples | [X mJ] | [Y mJ] | [Platform] |
-| Battery life (95% sleep) | [X days] | [Y days] | [Platform] |
+| Metric | ESP32-S3 | RP2350 | Arduino | Winner |
+|--------|----------|--------|---------|--------|
+| Idle current | [X mA] | [Y mA] | [Z mA] | [Platform] |
+| Inference current @ max MHz | [X mA] | [Y mA] | [Z mA] | [Platform] |
+| WiFi TX burst | [X mA] | [Y mA] | N/A | [Platform] |
+| Sleep current | [X µA] | [Y µA] | [Z µA] | [Platform] |
+| Energy per 1000 samples | [X mJ] | [Y mJ] | [Z mJ] | [Platform] |
+| Battery life (95% sleep) | [X days] | [Y days] | [Z days] | [Platform] |
 
 **Winner criteria:** Lowest average current for target duty cycle (5% active, 95% sleep).
 
@@ -231,28 +236,26 @@ Logic analyzer on DEBUG_PIN synchronizes power trace with code execution.
 
 **RP2350 datasheet:** 50 mA active @ 150 MHz, 0.18 mA dormant
 
+**Arduino Uno datasheet:** 20 mA active, 15 µA power-down
+
 **If mismatch >20%:** Check measurement setup. Verify no external peripherals drawing current.
 
 **Long-term test:** Run on battery for 7 days. Extrapolate to 1 year. Compare to model.
 
-## Tools Setup
+## Arduino IDE Tool Setup
 
 ### PPK2 (Recommended)
-
-```bash
-# Install nRF Connect for Desktop
-# Launch Power Profiler app
-# Connect PPK2 between PSU and MCU
-# Set source voltage: 3.3V
-# Set measurement range: 1 mA or 10 mA (low noise)
-# Record for 60 seconds per test
-# Export to CSV for analysis
-```
+1. Install nRF Connect for Desktop
+2. Launch Power Profiler app
+3. Connect PPK2 between PSU and MCU
+4. Set source voltage: 3.3V
+5. Set measurement range: 1 mA (low noise)
+6. Record for 60 seconds per test
+7. Export to CSV for analysis
 
 ### INA219 (Budget)
-
+**Python script for Raspberry Pi:**
 ```python
-# Raspberry Pi + INA219 sensor
 import ina219
 import time
 
@@ -265,18 +268,18 @@ for _ in range(600):  # 60 seconds @ 10 Hz
     time.sleep(0.1)
 ```
 
-### Oscilloscope
+**Save output, analyze in spreadsheet.**
 
-```
-# 0.1Ω shunt in series with VDD
-# Scope CH1: Voltage across shunt
-# Scope CH2: GPIO debug signal
-# Math: Current = V_shunt / 0.1Ω
-# Trigger on GPIO rising edge (start of measurement region)
-```
+### Oscilloscope Method
+1. Insert 0.1Ω shunt in series with VDD
+2. Scope CH1: Voltage across shunt
+3. Scope CH2: GPIO debug signal
+4. Math: Current = V_shunt / 0.1Ω
+5. Trigger on GPIO rising edge
 
 ## Analysis Script
 
+**Python template:**
 ```python
 # tools/power_profiling/analyze.py
 import pandas as pd
@@ -284,26 +287,82 @@ import pandas as pd
 df = pd.read_csv('power_trace.csv')
 mean_current = df['current_mA'].mean()
 energy_mAh = mean_current * (len(df) / 3600)  # Assuming 1 Hz sampling
+
 print(f"Mean: {mean_current:.2f} mA")
 print(f"Energy: {energy_mAh:.4f} mAh")
+print(f"Battery life @ 10Ah: {10000 / mean_current / 24:.1f} days")
 ```
 
-## Pitfall Avoidance
+## Common Pitfalls
 
-**USB power:** Don't measure via USB. Voltage drops under load. Use battery or bench PSU.
+**1. USB power measurement:** Don't measure via USB. Voltage drops under load. Use battery or bench PSU.
 
-**Bypass capacitors:** MCU has capacitors on PCB. They smooth current spikes. You see average, not peak.
+**2. Bypass capacitors:** MCU has capacitors on PCB. They smooth spikes. You see average, not peak.
 
-**WiFi certification:** If operating >100 mW EIRP, need FCC/CE certification. Check regional limits.
+**3. WiFi certification:** Operating >100 mW EIRP needs FCC/CE certification. Check regional limits.
 
-**Temperature:** Current increases with temperature. Measure at operating temp (e.g., 40°C in enclosure).
+**4. Temperature:** Current increases with temperature. Measure at operating temp (e.g., 40°C).
 
-## Next Steps
+## Arduino IDE Workflow for Testing
 
-1. Order PPK2 or build INA219 circuit
-2. Measure ESP32 baseline (all modes)
-3. Measure RP2350 baseline (all modes)
-4. Create comparison table
-5. Optimize worst offender
-6. Re-measure, iterate
-7. Validate with 7-day battery test
+**1. Upload baseline sketch:**
+```bash
+Tools → Board → Select your board
+Sketch → Upload
+```
+
+**2. Connect power meter:**
+```
+Battery → PPK2 → MCU VDD → GND
+```
+
+**3. Start recording:**
+- PPK2: Click "Start"
+- INA219: Run Python script
+- Scope: Set trigger, press single capture
+
+**4. Let run for 60 seconds**
+
+**5. Export data, analyze**
+
+**6. Modify sketch for next mode:**
+```cpp
+// Comment out WiFi
+#undef HAS_WIFI
+```
+
+**7. Re-upload, repeat measurement**
+
+## Next Steps (Priority Order)
+
+1. **Order PPK2 or build INA219 circuit** - Can't optimize what you don't measure
+2. **Measure ESP32 baseline** - All 5 modes
+3. **Measure RP2350 baseline** - All 5 modes
+4. **Create comparison table** - Who wins?
+5. **Optimize worst offender** - Target highest current mode
+6. **Re-measure** - Did it improve?
+7. **7-day battery test** - Validate model
+
+**Ship baseline measurements first. Optimize later.**
+
+## Arduino Serial Monitor Logging
+
+**Add to core.ino for real-time power debugging:**
+```cpp
+void logPowerState(const char* state) {
+  Serial.printf("[POWER] State: %s, Uptime: %lu ms\n",
+                state, millis());
+}
+
+void loop() {
+  logPowerState("ACTIVE");
+  // ... do work ...
+
+  logPowerState("SLEEP");
+  delay(60000);
+}
+```
+
+**Sync Serial output with power trace timestamps for correlation.**
+
+**One measurement setup. Three platforms. Zero guesswork.**

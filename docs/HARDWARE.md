@@ -1,245 +1,352 @@
 # Hardware Test Rig
 
-Induction motor setup for generating real bearing faults. Validate algorithm on actual hardware.
+Real motor. Real faults. Real validation. Three platforms tested with identical setup.
+
+## Goal
+
+Generate distinguishable vibration signatures. Validate streaming k-means against physical reality. Compare ESP32, RP2350, Arduino performance on identical hardware.
 
 ## Motor Specifications
 
-**Model:** [Document your specific motor]
+**Power:** 0.5 HP / 370W
 
-**Rated power:** [e.g., 0.5 HP / 370 W]
+**Speed range:** 1000-3000 RPM (VFD controlled)
 
-**Speed range:** [e.g., 0-3000 RPM via VFD]
+**Bearing type:** 6203-2RS deep groove ball bearing
 
-**Bearing type:** [e.g., 6203-2RS deep groove ball bearing]
+**Mounting:** Horizontal, foot-mounted
 
-**Mounting:** [e.g., horizontal, foot-mounted]
+**Why this size:** Small enough for lab. Large enough for measurable faults.
 
 ## Sensor Setup
 
-**Accelerometer:** ADXL345 or MPU6050 (I²C interface)
+**Accelerometer:** ADXL345 (recommended) or MPU6050
+
+**Interface:** I²C (4 wires: VCC, GND, SDA, SCL)
 
 **Placement:** Motor housing, near drive-end bearing
 
-**Mounting method:** Stud mount or epoxy adhesive
-
 **Sampling rate:** 12 kHz (matches CWRU dataset)
 
-**Resolution:** 13-bit (±16g range)
+**Resolution:** 13-bit, ±16g range
 
-## Operating Conditions
+**Why ADXL345:** Proven in literature. I²C = simple wiring. Arduino libraries exist.
 
-Generate distinguishable vibration signatures. Start healthy. Add faults incrementally.
+## Arduino IDE Platform Configuration
 
-### Baseline (Healthy)
-
-**Purpose:** Establish normal vibration profile.
-
-**Configuration:**
-- Clean bearings, no defects
-- Aligned coupling (within 0.05 mm)
-- Balanced rotor (ISO G6.3)
-
-**Test speeds:** 1000, 1500, 2000 RPM
-
-**Duration:** 5 minutes per speed
-
-**Data collection:** Record acceleration in 3 axes
-
-### Imbalance
-
-**Purpose:** Simulate rotor imbalance (common fault).
-
-**Configuration:**
-- Add 10g mass to shaft at 0°, 90°, 180°, 270° positions
-- Test each position separately
-
-**Test speeds:** 1000, 1500, 2000 RPM
-
-**Expected signature:** 1× RPM frequency spike
-
-**Severity levels:**
-- Mild: 10g at 50 mm radius
-- Moderate: 20g at 50 mm radius
-- Severe: 30g at 50 mm radius
-
-### Misalignment
-
-**Purpose:** Simulate coupling misalignment.
-
-**Configuration:**
-- Parallel: Offset shafts by 0.5 mm, 1.0 mm, 1.5 mm
-- Angular: Rotate motor mount by 0.5°, 1.0°, 1.5°
-
-**Test speeds:** 1000, 1500, 2000 RPM
-
-**Expected signature:** 2× RPM frequency spike
-
-### Bearing Faults
-
-**Purpose:** Validate algorithm on target fault type.
-
-**Configuration:**
-- **Ball defect:** 0.5 mm notch on single ball
-- **Inner race:** 0.5 mm notch on raceway
-- **Outer race:** 0.5 mm notch on raceway
-
-**Bearing geometry (6203-2RS typical):**
-- Pitch diameter: 29 mm
-- Ball diameter: 7 mm
-- Number of balls: 8
-- Contact angle: 0° (radial)
-
-**Fault frequencies:**
-- BPFO (ball pass outer): 4.95 × RPM / 60
-- BPFI (ball pass inner): 7.05 × RPM / 60
-- BSF (ball spin): 2.36 × RPM / 60
-- FTF (cage): 0.38 × RPM / 60
-
-**Test speeds:** 1000, 1500, 2000 RPM
-
-**Expected signature:** Spikes at calculated fault frequencies
-
-**Safety:** Bearing faults create vibration. Monitor for excessive levels. Stop if >10 mm/s RMS.
-
-### Electrical Faults
-
-**Purpose:** Broaden fault coverage.
-
-**Configuration:**
-- Single-phase operation: Disconnect one phase
-- Voltage unbalance: Reduce one phase by 10%, 20%
-
-**Test speeds:** 1000, 1500 RPM only (reduced load)
-
-**Expected signature:** 2× line frequency sidebands
-
-## Wiring Diagram
-
-**Power:**
+**Auto-detection via config.h:**
+```cpp
+// Detects board and sets pins automatically
+#if defined(ARDUINO_ARCH_ESP32)
+  #define PLATFORM_ESP32
+  #define HAS_WIFI
+  // I²C: GPIO21 (SDA), GPIO22 (SCL)
+#elif defined(ARDUINO_RASPBERRY_PI_PICO_2)
+  #define PLATFORM_RP2350
+  #define HAS_WIFI
+  // I²C: GP4 (SDA), GP5 (SCL)
+#elif defined(ARDUINO_AVR_UNO)
+  #define PLATFORM_ARDUINO
+  // I²C: A4 (SDA), A5 (SCL)
+#endif
 ```
-AC Source → VFD → Motor (U, V, W phases)
+
+**One sketch. Three platforms. Zero manual pin changes.**
+
+## Wiring Diagrams
+
+### Power System
+```
+AC Source → VFD → Motor (U, V, W)
              ↓
           Ground
 ```
 
-**Data acquisition:**
+### Sensor Connections (All Platforms)
+
+**ESP32-S3:**
 ```
-Accelerometer → RP2350 / ESP32
-   (I²C)           (GPIO pins)
-                      ↓
-                   USB Serial
-                      ↓
-                   Computer
+ADXL345          ESP32-S3
+--------         --------
+VCC      →       3.3V
+GND      →       GND
+SDA      →       GPIO21 (default I²C SDA)
+SCL      →       GPIO22 (default I²C SCL)
+CS       →       3.3V (I²C mode)
 ```
 
-**Pinout (RP2350):**
-- SDA: GP4
-- SCL: GP5
-- GND: GND
-- VCC: 3V3
+**RP2350 (Pico 2 W):**
+```
+ADXL345          Pico 2 W
+--------         --------
+VCC      →       3V3 (Pin 36)
+GND      →       GND (Pin 38)
+SDA      →       GP4 (Pin 6)
+SCL      →       GP5 (Pin 7)
+CS       →       3V3 (I²C mode)
+```
 
-**Pinout (ESP32):**
-- SDA: GPIO21
-- SCL: GPIO22
-- GND: GND
-- VCC: 3.3V
+**Arduino Uno/Mega:**
+```
+ADXL345          Arduino
+--------         --------
+VCC      →       3.3V (if available) or 5V with level shifter
+GND      →       GND
+SDA      →       A4 (Uno) / SDA pin (Mega)
+SCL      →       A5 (Uno) / SCL pin (Mega)
+CS       →       VCC (I²C mode)
+```
 
-## Data Collection Protocol
+**Critical:** ADXL345 is 3.3V device. Arduino runs 5V. Use level shifter or 3.3V supply.
+
+### I²C Pull-up Resistors
+```
+        3.3V
+         │
+    4.7kΩ├─────┬─── SDA
+         │     │
+    4.7kΩ└─────┴─── SCL
+```
+
+**Note:** Most dev boards have onboard pull-ups. Add external only if bus unstable.
+
+## Arduino Sketch Integration
+
+**Libraries required:**
+```cpp
+#include <Wire.h>           // I²C communication
+#include <Adafruit_ADXL345_U.h>  // ADXL345 driver
+```
+
+**Setup in core.ino:**
+```cpp
+Adafruit_ADXL345_Unified accel = Adafruit_ADXL345_Unified(12345);
+
+void setup() {
+  Serial.begin(115200);
+
+  if (!accel.begin()) {
+    Serial.println("ADXL345 not found!");
+    while (1) platform_blink(10);
+  }
+
+  accel.setRange(ADXL345_RANGE_16_G);
+  accel.setDataRate(ADXL345_DATARATE_3200_HZ);
+
+  // Initialize k-means...
+}
+```
+
+**Reading in loop():**
+```cpp
+void loop() {
+  sensors_event_t event;
+  accel.getEvent(&event);
+
+  // Convert to fixed-point
+  fixed_t features[3] = {
+    FLOAT_TO_FIXED(event.acceleration.x),
+    FLOAT_TO_FIXED(event.acceleration.y),
+    FLOAT_TO_FIXED(event.acceleration.z)
+  };
+
+  uint8_t cluster = kmeans_update(&model, features);
+
+  // MQTT publish if WiFi available
+  #ifdef HAS_WIFI
+  mqtt.publishCluster(cluster, features, 3);
+  #endif
+}
+```
+
+## Operating Conditions (Simplified for MVP)
+
+### Phase 1: Baseline (Healthy)
+**Goal:** Establish normal vibration profile.
+
+**Configuration:** Clean bearings, aligned coupling, balanced rotor
+
+**Test speeds:** 1500 RPM only (simplify for MVP)
+
+**Duration:** 5 minutes
+
+**Success:** Cluster formation visible in Serial Monitor
+
+### Phase 2: Single Fault (Outer Race)
+**Goal:** Validate fault detection.
+
+**Configuration:** 0.5 mm notch on outer race
+
+**Test speed:** 1500 RPM
+
+**Expected:** New cluster forms, distinct from baseline
+
+**Success:** >80% samples assigned to new cluster
+
+### Phase 3: HITL Correction
+**Goal:** Test human-in-the-loop.
+
+**Method:** Send MQTT correction for misclassified samples
+
+**Measure:** Accuracy improvement after 10% labels
+
+**Target:** +15% accuracy vs baseline
+
+**Priority:** Phases 1-2 sufficient for MVP. Phase 3 if time permits.
+
+## Bearing Fault Frequencies (6203-2RS)
+
+**Geometry:**
+- Pitch diameter: 29 mm
+- Ball diameter: 7 mm
+- Number of balls: 8
+- Contact angle: 0°
+
+**Fault frequencies @ 1500 RPM (25 Hz):**
+- BPFO (ball pass outer): 123.75 Hz
+- BPFI (ball pass inner): 176.25 Hz
+- BSF (ball spin): 59 Hz
+- FTF (cage): 9.5 Hz
+
+**Verification:** FFT should show spikes at these frequencies.
+
+## Data Collection Protocol (MVP)
 
 **Per condition:**
-1. Set speed via VFD
-2. Wait 60 seconds for stabilization
-3. Record 60 seconds of data
-4. Save with label: [condition]_[speed]_[trial].bin
+1. Set VFD to 1500 RPM
+2. Wait 60 seconds (stabilization)
+3. Record 60 seconds
+4. Upload sketch, watch Serial Monitor
+5. Save output to .txt file
 
-**Labeling scheme:**
+**Labeling:**
 ```
-healthy_1000_01.bin
-imbalance_10g_0deg_1500_01.bin
-bearing_outer_1500_01.bin
+healthy_1500_01.txt
+outer_race_1500_01.txt
 ```
 
-**Trials:** Minimum 3 per condition. Check repeatability.
+**Trials:** 3 minimum per condition
 
-**Verification:** FFT each trial. Peak frequencies match theory? If not, recheck setup.
+**Verification:** Check Serial output for cluster assignment consistency
 
-## Safety
+## Safety (Critical)
 
 **Hazards:**
-- Rotating shaft (entanglement)
-- Bearing failure (projectile parts)
-- Electrical shock (VFD output)
+- Rotating shaft → entanglement
+- Bearing failure → projectile parts
+- Electrical shock → VFD output
 
 **Mitigation:**
-- Guard around rotating parts
-- Emergency stop button within reach
+- Guard around motor (mandatory)
+- E-stop button within reach
 - Ground all equipment
-- Eye protection during fault tests
+- Eye protection during tests
 - Never exceed 3000 RPM
+- Replace bearings after 10 fault tests
 
-**Wear limits:** Replace bearings after 10 fault tests. Structural damage accumulates.
+**If anything looks unsafe, stop immediately.**
 
-## Calibration
+## Calibration Steps
 
 **Accelerometer:**
-1. Place sensor on vibration calibrator (10 Hz, 1g)
-2. Record output. Verify ±5% of expected.
-3. Apply correction factor if needed.
+1. Place sensor horizontal, still
+2. Z-axis should read ~1g (gravity)
+3. X/Y axes should read ~0g
+4. If not: check sensor orientation
 
 **Tachometer:**
 1. Attach reflective tape to shaft
-2. Verify RPM with optical tachometer
-3. VFD display vs actual RPM should match ±2%
+2. Use optical tachometer
+3. Verify VFD display matches actual RPM (±2%)
 
 **Frequency validation:**
 1. Record healthy baseline
-2. FFT, identify RPM peak
-3. Compare calculated fault frequencies to bearing spec
-4. If mismatch >5%, recheck geometry
+2. FFT in Python/MATLAB
+3. Identify RPM peak (should be 25 Hz @ 1500 RPM)
+4. Compare to calculated fault frequencies
 
-## Equipment List
+## Equipment Checklist
 
+**Essential (MVP):**
 - [ ] Induction motor (0.5-2 HP)
-- [ ] Variable frequency drive (VFD)
-- [ ] ADXL345 or MPU6050 accelerometer
-- [ ] RP2350 or ESP32 dev board
+- [ ] VFD
+- [ ] ADXL345 accelerometer
+- [ ] One dev board (ESP32 or RP2350 recommended)
 - [ ] Power supply (5V, 2A for MCU)
-- [ ] USB cable (data logging)
-- [ ] Motor mount with alignment capability
-- [ ] Mass set (10g, 20g, 30g)
-- [ ] Hand tools (wrenches, screwdrivers)
+- [ ] USB cable
 - [ ] Safety guard around motor
-- [ ] Emergency stop button
-- [ ] Optical tachometer
-- [ ] Vibration calibrator (optional, for accuracy)
+- [ ] E-stop button
 
-## Expected Results
+**Nice to have:**
+- [ ] Second dev board (platform comparison)
+- [ ] Optical tachometer (RPM verification)
+- [ ] Vibration calibrator (accuracy validation)
 
-**Healthy:** Low amplitude, smooth spectrum
+## Platform Comparison Testing
 
-**Imbalance:** 1× RPM spike dominant
+**Method:**
+1. Run identical test on ESP32
+2. Run identical test on RP2350
+3. Run identical test on Arduino (if RAM sufficient)
 
-**Misalignment:** 2× RPM spike dominant
+**Metrics:**
+- Cluster formation speed
+- MQTT publish rate (WiFi platforms)
+- Serial output latency
+- Power consumption (see POWER.md)
 
-**Bearing fault:** Spikes at BPFO/BPFI/BSF frequencies
-
-**Streaming k-means:** Should form distinct clusters per condition. HITL corrections improve separation.
+**Success:** All platforms form clusters. WiFi platforms report to SCADA.
 
 ## Troubleshooting
 
-**Sensor reads zero:** Check I²C connection. Verify power supply.
+**Sensor reads zero:**
+- Check I²C wiring
+- Verify 3.3V supply
+- Run I²C scanner sketch
 
-**Excessive noise:** Ground loop? Use twisted pair for I²C. Separate power grounds.
+**Excessive noise:**
+- Ground loop? Separate grounds.
+- EMI from motor? Use shielded cable.
+- Move MCU away from motor.
 
-**No fault signature:** Defect too small? Increase depth. Recheck bearing geometry.
+**No fault signature:**
+- Defect too small? Increase depth.
+- Wrong frequency? Recheck geometry.
+- Speed incorrect? Verify tachometer.
 
-**Motor won't start:** VFD configuration? Check phase wiring. Verify voltage.
+**Motor won't start:**
+- VFD configuration? Check manual.
+- Phase wiring? Verify U, V, W.
+- Emergency stop pressed? Reset.
 
-## Next Steps
+## Next Steps (Priority Order)
 
-1. Document your specific motor model and bearing type
-2. Build test rig, verify healthy baseline
-3. Generate one fault condition, validate signature
-4. Automate data collection script
-5. Stream to MCU, test clustering
-6. Inject HITL labels, measure improvement
+1. **Wire one platform** - ESP32 or RP2350 (WiFi simplifies testing)
+2. **Test baseline** - Healthy motor, verify clustering
+3. **Induce one fault** - Outer race defect
+4. **Validate separation** - New cluster forms?
+5. **If time:** Second platform comparison
+6. **If time:** HITL corrections via MQTT
+
+**Ship working code on one platform. Expand coverage later.**
+
+## Arduino IDE Upload Settings
+
+**ESP32:**
+- Board: ESP32S3 Dev Module
+- Port: /dev/ttyUSB0 (Linux) or COM3 (Windows)
+- Upload Speed: 921600
+
+**RP2350:**
+- Board: Raspberry Pi Pico 2 W
+- Port: /dev/ttyACM0 (Linux) or COM4 (Windows)
+- Upload Speed: default
+
+**Arduino:**
+- Board: Arduino Uno/Mega
+- Port: /dev/ttyACM0 (Linux) or COM5 (Windows)
+- Upload Speed: 115200
+
+**Verification:** Upload blink sketch first. LED works? Proceed to sensor test.
+
+**Remember:** One wiring diagram. One sketch. Three platforms. Zero manual configuration.
