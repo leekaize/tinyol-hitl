@@ -5,6 +5,23 @@
   institution = {PLCnext Community}
 }
 
+@inproceedings{ahmatshin2024MinibatchKMeansClustering,
+  title = {Mini-Batch {{K-Means}}++ {{Clustering Initialization}}},
+  booktitle = {Mathematical {{Optimization Theory}} and {{Operations Research}}: {{Recent Trends}}},
+  author = {Ahmatshin, Farid and Kazakovtsev, Lev},
+  editor = {Eremeev, Anton and Khachay, Michael and Kochetov, Yury and Mazalov, Vladimir and Pardalos, Panos},
+  year = 2024,
+  pages = {293--307},
+  publisher = {Springer Nature Switzerland},
+  address = {Cham},
+  doi = {10.1007/978-3-031-73365-9_20},
+  abstract = {Fast algorithms for clustering large and ultra-large volumes of data are in demand in various fields, for example, vector databases. The k-means algorithm remains the most popular, however, it is extremely dependent on the initialization method. K-means++ is a well-established procedure for selecting initial cluster centers (centroids) for the k-means algorithm. In this work, we present a new algorithm capable of solving the k-means++ initialization problem for obtaining a good initial solution. The well-known k-means++ algorithm works well for data sets of N data vectors in a d-dimensional space when performing a single pass through the input data in O(k) iterations, and each iteration is characterized by complexity O(Ndk), where k is the number of centroids (clusters). So, the total execution time is \$\$O(Ndk\textasciicircum 2)\$\$O(Ndk2). Since k-means++ requires k passes through the data to initialize, it does not scale well to large data sets. We propose the Mini-batch K-means++ algorithm with a single pass through the data and a total expected execution time of \$\$O(dk(b+\textbackslash log B))\$\$O(dk(b+logB)), where B is the number of batches of data, and b is the number of data vectors in one batch, \$\$N \textbackslash le Bb\$\$N{$\leq$}Bb. The higher comparative efficiency of the new Mini-batch K-means++ algorithm for big data is shown by the experiment. The minimum amount of memory resources for the algorithm to run is expected at \$\$B=n\textasciicircum\textbraceleft 1/2\textbraceright\$\$B=n1/2with a non-optimal execution time of \$\$O(dk(b+\textbackslash log B))\$\$O(dk(b+logB)). In the optimal scenario for running a new algorithm, for \$\$2\textasciicircum w\$\$2wdata vectors, the expected time expenditure is O(dkw). It is shown that the quality of solutions is not inferior to the classical k-means++.},
+  isbn = {978-3-031-73365-9},
+  langid = {english},
+  keywords = {clustering,k-Means++,Mini-batch k-Means},
+  file = {/home/kzlee/snap/zotero-snap/common/Zotero/storage/2YMLQF5R/Ahmatshin and Kazakovtsev - 2024 - Mini-batch K-Means++ Clustering Initialization.pdf}
+}
+
 @techreport{algorithmia20202020StateEnterprise,
   title = {2020 State of Enterprise Machine Learning},
   author = {{Algorithmia}},
@@ -35,6 +52,56 @@
   pages = {1--8}
 }
 
+@inproceedings{cai2020tinytl,
+  title = {{{TinyTL}}: {{Reduce}} Memory, Not Parameters for Efficient on-Device Learning},
+  booktitle = {Advances in Neural Information Processing Systems},
+  author = {Cai, Han and Gan, Chuang and Zhu, Ligeng and Han, Song},
+  year = 2020,
+  volume = {33}
+}
+
+@techreport{comptia2024TechWorkforce,
+  title = {Tech Workforce Report 2024},
+  author = {{CompTIA}},
+  year = 2024
+}
+
+@article{flores2025EnhancedVectorQuantization,
+  title = {Enhanced {{Vector Quantization}} for {{Embedded Machine Learning}}: {{A Post-Training Approach With Incremental Clustering}}},
+  shorttitle = {Enhanced {{Vector Quantization}} for {{Embedded Machine Learning}}},
+  author = {Flores, Thommas K. S. and Medeiros, Morsinaldo and Silva, Marianne and Costa, Daniel G. and Silva, Ivanovitch},
+  year = 2025,
+  journal = {IEEE Access},
+  volume = {13},
+  pages = {17440--17456},
+  issn = {2169-3536},
+  doi = {10.1109/ACCESS.2025.3532849},
+  urldate = {2025-11-06},
+  abstract = {TinyML enables the deployment of Machine Learning (ML) models on resource-constrained devices, addressing a growing need for efficient, low-power AI solutions. However, significant challenges remain due to strict memory, processing, and energy limitations. This study introduces a novel method to optimize Post-Training Quantization (PTQ), a widely used technique for reducing model size, by integrating Vector Quantization (VQ) with incremental clustering. While VQ is a technique that reduces model size by grouping similar parameters, incremental clustering, implemented via the AutoCloud K-Fixed algorithm, preserves accuracy during compression. This combined approach was validated on an automotive dataset predicting CO2 emissions from vehicle sensor measurements such as mass air flow, intake pressure, temperature, and speed. The model was quantized and deployed on Macchina A0 hardware, demonstrating over 90\% compression with negligible accuracy loss. Results show improved performance and deployment efficiency, showcasing the potential of this combined technique for real-world embedded applications.},
+  keywords = {Accuracy,Adaptation models,Automotive engineering,automotive sensors,Clustering algorithms,Computational efficiency,Computational modeling,Data models,Embedded systems,pollution,post-training quantization,Training,vector quantization,Vector quantization},
+  file = {/home/kzlee/snap/zotero-snap/common/Zotero/storage/3KEZ43XG/Flores et al. - 2025 - Enhanced Vector Quantization for Embedded Machine Learning A Post-Training Approach With Incrementa.pdf}
+}
+
+@article{hicks2021MbkmeansFastClustering,
+  title = {Mbkmeans: {{Fast}} Clustering for Single Cell Data Using Mini-Batch k-Means},
+  shorttitle = {Mbkmeans},
+  author = {Hicks, Stephanie C. and Liu, Ruoxi and Ni, Yuwei and Purdom, Elizabeth and Risso, Davide},
+  year = 2021,
+  month = jan,
+  journal = {PLOS Computational Biology},
+  volume = {17},
+  number = {1},
+  pages = {e1008625},
+  publisher = {Public Library of Science},
+  issn = {1553-7358},
+  doi = {10.1371/journal.pcbi.1008625},
+  urldate = {2025-11-06},
+  abstract = {Single-cell RNA-Sequencing (scRNA-seq) is the most widely used high-throughput technology to measure genome-wide gene expression at the single-cell level. One of the most common analyses of scRNA-seq data detects distinct subpopulations of cells through the use of unsupervised clustering algorithms. However, recent advances in scRNA-seq technologies result in current datasets ranging from thousands to millions of cells. Popular clustering algorithms, such as k-means, typically require the data to be loaded entirely into memory and therefore can be slow or impossible to run with large datasets. To address this problem, we developed the mbkmeans R/Bioconductor package, an open-source implementation of the mini-batch k-means algorithm. Our package allows for on-disk data representations, such as the common HDF5 file format widely used for single-cell data, that do not require all the data to be loaded into memory at one time. We demonstrate the performance of the mbkmeans package using large datasets, including one with 1.3 million cells. We also highlight and compare the computing performance of mbkmeans against the standard implementation of k-means and other popular single-cell clustering methods. Our software package is available in Bioconductor at https://bioconductor.org/packages/mbkmeans.},
+  langid = {english},
+  keywords = {Algorithms,Clustering algorithms,Computer hardware,Computer software,Gene expression,Machine learning algorithms,Principal component analysis,Simulation and modeling},
+  file = {/home/kzlee/snap/zotero-snap/common/Zotero/storage/V6W8Y9BP/Hicks et al. - 2021 - mbkmeans Fast clustering for single cell data using mini-batch k-means.pdf}
+}
+
 @techreport{internationaldatacorporation2023BusinessOpportunityAI,
   title = {The Business Opportunity of {{AI}}},
   author = {{International Data Corporation} and {Microsoft}},
@@ -62,6 +129,53 @@
   year = 2025
 }
 
+@misc{lai2018CMSISNNEfficientNeural,
+  title = {{{CMSIS-NN}}: {{Efficient Neural Network Kernels}} for {{Arm Cortex-M CPUs}}},
+  shorttitle = {{{CMSIS-NN}}},
+  author = {Lai, Liangzhen and Suda, Naveen and Chandra, Vikas},
+  year = 2018,
+  month = jan,
+  number = {arXiv:1801.06601},
+  eprint = {1801.06601},
+  primaryclass = {cs},
+  publisher = {arXiv},
+  doi = {10.48550/arXiv.1801.06601},
+  urldate = {2025-11-06},
+  abstract = {Deep Neural Networks are becoming increasingly popular in always-on IoT edge devices performing data analytics right at the source, reducing latency as well as energy consumption for data communication. This paper presents CMSIS-NN, efficient kernels developed to maximize the performance and minimize the memory footprint of neural network (NN) applications on Arm Cortex-M processors targeted for intelligent IoT edge devices. Neural network inference based on CMSIS-NN kernels achieves 4.6X improvement in runtime/throughput and 4.9X improvement in energy efficiency.},
+  archiveprefix = {arXiv},
+  keywords = {Computer Science - Machine Learning,Computer Science - Mathematical Software,Computer Science - Neural and Evolutionary Computing},
+  file = {/home/kzlee/snap/zotero-snap/common/Zotero/storage/338FHD4X/1801.html}
+}
+
+@inproceedings{lin2022mcunetv3,
+  title = {On-Device Training under {{256KB}} Memory},
+  booktitle = {Advances in Neural Information Processing Systems},
+  author = {Lin, Ji and Zhu, Ligeng and Chen, Wei-Ming and Wang, Wei-Chen and Gan, Chuang and Han, Song},
+  year = 2022,
+  volume = {35}
+}
+
+@article{mahato2025DairyDigiDEdgeCloud,
+  title = {Dairy {{DigiD}}: {{An Edge-Cloud Framework}} for {{Real-Time Cattle Biometrics}} and {{Health Classification}}},
+  shorttitle = {Dairy {{DigiD}}},
+  author = {Mahato, Shubhangi and Neethirajan, Suresh},
+  year = 2025,
+  month = sep,
+  journal = {AI},
+  volume = {6},
+  number = {9},
+  pages = {196},
+  publisher = {Multidisciplinary Digital Publishing Institute},
+  issn = {2673-2688},
+  doi = {10.3390/ai6090196},
+  urldate = {2025-11-06},
+  abstract = {Digital livestock farming faces a critical deployment challenge: bridging the gap between cutting-edge AI algorithms and practical implementation in resource-constrained agricultural environments. While deep learning models demonstrate exceptional accuracy in laboratory settings, their translation to operational farm systems remains limited by computational constraints, connectivity issues, and user accessibility barriers. Dairy DigiD addresses these challenges through a novel edge-cloud AI framework integrating YOLOv11 object detection with DenseNet121 physiological classification for cattle monitoring. The system employs YOLOv11-nano architecture optimized through INT8 quantization (achieving 73\% model compression with {$<$}1\% accuracy degradation) and TensorRT acceleration, enabling 24 FPS real-time inference on NVIDIA Jetson edge devices while maintaining 94.2\% classification accuracy. Our key innovation lies in intelligent confidence-based offloading: routine detections execute locally at the edge, while ambiguous cases trigger cloud processing for enhanced accuracy. An entropy-based active learning pipeline using Roboflow reduces the annotation overhead by 65\% while preserving 97\% of the model performance. The Gradio interface democratizes system access, reducing technician training requirements by 84\%. Comprehensive validation across ten commercial dairy farms in Atlantic Canada demonstrates robust performance under diverse environmental conditions (seasonal, lighting, weather variations). The framework achieves mAP@50 of 0.947 with balanced precision-recall across four physiological classes, while consuming 18\% less energy than baseline implementations through attention-based optimization. Rather than proposing novel algorithms, this work contributes a systems-level integration methodology that transforms research-grade AI into deployable agricultural solutions. Our open-source framework provides a replicable blueprint for precision livestock farming adoption, addressing practical barriers that have historically limited AI deployment in agricultural settings.},
+  copyright = {http://creativecommons.org/licenses/by/3.0/},
+  langid = {english},
+  keywords = {AI framework,cattle identification,computer vision,deep learning,edge computing,human-AI interaction,model optimization,precision livestock farming,sustainable agriculture,YOLOv11},
+  file = {/home/kzlee/snap/zotero-snap/common/Zotero/storage/YVA7HUJ3/Mahato and Neethirajan - 2025 - Dairy DigiD An Edge-Cloud Framework for Real-Time Cattle Biometrics and Health Classification.pdf}
+}
+
 @techreport{maintainx20252025StateIndustrial,
   title = {The 2025 State of Industrial Maintenance Report},
   author = {{MaintainX}},
@@ -73,6 +187,18 @@
   author = {{McKinsey \& Company}},
   year = 2021,
   month = oct
+}
+
+@misc{moring2024YouCantHire,
+  title = {You {{Can}}'t {{Hire Your Way}} to {{Model Alignment}}},
+  author = {Moring, Marc},
+  year = 2024,
+  month = dec,
+  urldate = {2025-11-06},
+  abstract = {Why the Global AI talent shortage Is undermining enterprise model alignment, and what you can do instead},
+  howpublished = {https://blog.collinear.ai/p/ai-talent-wars},
+  langid = {english},
+  file = {/home/kzlee/snap/zotero-snap/common/Zotero/storage/492D2FF6/ai-talent-wars.html}
 }
 
 @article{mosqueira-rey2023HumanintheloopMachineLearning,
@@ -97,6 +223,13 @@
   year = 2024
 }
 
+@techreport{osie2020OpenSourceIndustrial,
+  title = {Open Source Industrial Edge ({{OSIE}}): {{Industrial}} Edge as a Service},
+  author = {{OSIE Project Consortium}},
+  year = 2020,
+  month = may
+}
+
 @techreport{osieprojectconsortium2018OpenSourceIndustrial,
   title = {Open Source Industrial Edge ({{OSIE}}): {{Industrial}} Edge as a Service},
   author = {{OSIE Project Consortium}},
@@ -116,6 +249,16 @@
   month = sep
 }
 
+@inproceedings{qian2019DistributedActiveLearning,
+  title = {Distributed {{Active Learning Strategies}} on {{Edge Computing}}},
+  author = {Qian, Jia and Gochhayat, Sarada and Hansen, Lars},
+  year = 2019,
+  month = jun,
+  pages = {221--226},
+  doi = {10.1109/CSCloud/EdgeCom.2019.00029},
+  file = {/home/kzlee/snap/zotero-snap/common/Zotero/storage/FEVYVSAV/Qian et al. - 2019 - Distributed Active Learning Strategies on Edge Computing.pdf}
+}
+
 @inproceedings{ren2021TinyOLTinyMLOnlinelearning,
   title = {{{TinyOL}}: {{TinyML}} with Online-Learning on Microcontrollers},
   booktitle = {2021 International Joint Conference on Neural Networks ({{IJCNN}})},
@@ -130,6 +273,15 @@
   title = {Edge or Cloud: {{What}}'s Best for Manufacturers?},
   author = {{Rockwell Automation}},
   year = 2023
+}
+
+@article{rosa2024benchmarking,
+  title = {Benchmarking Deep Learning Models for Bearing Fault Diagnosis Using the {{CWRU}} Dataset: {{A}} Multi-Label Approach},
+  author = {Rosa, R.K. and Braga, D. and Silva, D.},
+  year = 2024,
+  journal = {arXiv preprint arXiv:2407.14625},
+  eprint = {2407.14625},
+  archiveprefix = {arXiv}
 }
 
 @techreport{u.s.bureauoflaborstatistics2024OccupationalOutlookHandbook,
@@ -149,6 +301,17 @@
   doi = {10.1093/jamia/ocz102}
 }
 
+@article{wei2019CostawareActiveLearning,
+  title = {Cost-Aware Active Learning for Named Entity Recognition in Clinical Text},
+  author = {Wei, Q. and Wu, S. and Chen, Y. and others},
+  year = 2019,
+  journal = {Journal of the American Medical Informatics Association},
+  volume = {26},
+  number = {11},
+  pages = {1314--1322},
+  doi = {10.1093/jamia/ocz102}
+}
+
 @article{worldjournalofadvancedengineeringtechnologyandsciences2025DemocratizingAIHow,
   title = {Democratizing {{AI}}: {{How AutoML}} Is Transforming Enterprise Machine Learning},
   author = {{World Journal of Advanced Engineering Technology and Sciences}},
@@ -157,4 +320,14 @@
   volume = {15},
   number = {01},
   pages = {701--708}
+}
+
+@article{yoo2023lite,
+  title = {Lite and Efficient Deep Learning Model for Bearing Fault Diagnosis Using the {{CWRU}} Dataset},
+  author = {Yoo, Y. and Baek, S.-W.},
+  year = 2023,
+  journal = {Sensors},
+  volume = {23},
+  number = {6},
+  pages = {3157}
 }
