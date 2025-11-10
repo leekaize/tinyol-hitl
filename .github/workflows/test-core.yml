@@ -23,18 +23,33 @@ jobs:
         cd core
         gcc -o test_kmeans test_kmeans.c streaming_kmeans.c -lm -Wall -Wextra -Werror
 
-    - name: Run tests
+    - name: Compile HITL tests
       run: |
         cd core
+        gcc -o test_hitl test_hitl.c streaming_kmeans.c -lm -Wall -Wextra -Werror
+
+    - name: Run all tests
+      run: |
+        cd core
+        echo "=== Core Algorithm ==="
         ./test_kmeans
+        echo ""
+        echo "=== HITL Corrections ==="
+        ./test_hitl
 
     - name: Generate summary
       if: always()
       run: |
         cd core
         echo "## Test Results" >> $GITHUB_STEP_SUMMARY
+        echo "### Core Algorithm" >> $GITHUB_STEP_SUMMARY
         echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
         ./test_kmeans >> $GITHUB_STEP_SUMMARY 2>&1 || true
         echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
         echo "" >> $GITHUB_STEP_SUMMARY
-        echo "**Binary size:** $(stat -c%s test_kmeans) bytes" >> $GITHUB_STEP_SUMMARY
+        echo "### HITL Corrections" >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+        ./test_hitl >> $GITHUB_STEP_SUMMARY 2>&1 || true
+        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Binary sizes:** kmeans=$(stat -c%s test_kmeans)B, hitl=$(stat -c%s test_hitl)B" >> $GITHUB_STEP_SUMMARY
