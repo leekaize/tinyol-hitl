@@ -1,0 +1,40 @@
+name: Core Algorithm Tests
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'core/**'
+      - '.github/workflows/test-core.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'core/**'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Compile tests
+      run: |
+        cd core
+        gcc -o test_kmeans test_kmeans.c streaming_kmeans.c -lm -Wall -Wextra -Werror
+
+    - name: Run tests
+      run: |
+        cd core
+        ./test_kmeans
+
+    - name: Generate summary
+      if: always()
+      run: |
+        cd core
+        echo "## Test Results" >> $GITHUB_STEP_SUMMARY
+        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+        ./test_kmeans >> $GITHUB_STEP_SUMMARY 2>&1 || true
+        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "**Binary size:** $(stat -c%s test_kmeans) bytes" >> $GITHUB_STEP_SUMMARY
