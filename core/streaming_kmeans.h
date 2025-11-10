@@ -1,7 +1,7 @@
 /**
  * @file streaming_kmeans.h
  * @brief Streaming K-Means for RP2350 (<100KB RAM)
- * 
+ *
  * Memory: K × feature_dim × 4 bytes + metadata
  * Update: Exponential moving average per point
  * Distance: Squared Euclidean (no sqrt overhead)
@@ -92,6 +92,19 @@ fixed_t kmeans_inertia(const kmeans_model_t* model);
  * @param model Model to reset
  */
 void kmeans_reset(kmeans_model_t* model);
+
+/**
+ * Apply human-in-the-loop correction
+ * @param model Model to update
+ * @param point Sample to relabel (feature vector)
+ * @param old_cluster Current cluster assignment
+ * @param new_cluster Correct cluster (human label)
+ * @return true on success, false if invalid parameters
+ */
+bool kmeans_correct(kmeans_model_t* model,
+                    const fixed_t* point,
+                    uint8_t old_cluster,
+                    uint8_t new_cluster);
 
 // Helper: Squared Euclidean distance (fixed-point)
 fixed_t distance_squared(const fixed_t* a, const fixed_t* b, uint8_t dim);

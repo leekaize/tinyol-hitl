@@ -4,6 +4,7 @@ Open-standard streaming k-means for edge devices. Arduino IDE. Multi-platform.
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Platforms](https://img.shields.io/badge/Platforms-ESP32%20%7C%20RP2350-blue.svg)](core/)
+[![Tests](https://github.com/leekaize/tinyol-hitl/actions/workflows/test-core.yml/badge.svg)](https://github.com/YOUR_USERNAME/tinyol-hitl/actions/workflows/test-core.yml)
 
 ## Problem
 
