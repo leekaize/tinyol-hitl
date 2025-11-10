@@ -329,3 +329,61 @@ outer_race_1500_01.txt
 **Verification:** Upload blink sketch first. LED works? Proceed to sensor test.
 
 **Remember:** One wiring diagram. One sketch. Three platforms. Zero manual configuration.
+
+## Supported Sensors
+
+### Accelerometers
+**GY-521 (MPU6050)** - Primary, readily available
+- Range: ±2g to ±16g (configurable)
+- Interface: I²C (0x68 / 0x69)
+- Library: `MPU6050_light`
+- Power: 0.5 mA (accel-only mode)
+
+**ADXL345** - Alternative, documentation reference
+- Range: ±2g to ±16g
+- Interface: I²C (0x53 / 0x1D)
+- Library: `Adafruit_ADXL345_U`
+- Power: 0.14 mA
+
+### Current Sensors (Phase 2)
+**ACS712** - Hall effect, analog
+- Variants: 5A / 20A / 30A
+- Interface: Analog ADC
+- Use case: 0.5 HP motor → ACS712-05A
+
+**INA219** - Shunt-based, digital
+- Range: ±3.2A
+- Interface: I²C (0x40)
+- Use case: Precision current monitoring
+
+## Sensor Selection in config.h
+```cpp
+#define SENSOR_TYPE SENSOR_MPU6050  // or SENSOR_ADXL345
+#define HAS_CURRENT_SENSOR false    // true when current sensor added
+```
+
+## Integration Checklist
+
+**Phase 1: Accelerometer Working (Days 1-2)**
+- [ ] GY-521 wired to ESP32 (VCC, GND, SDA, SCL)
+- [ ] I²C scan detects 0x68
+- [ ] Read 3-axis at 100 Hz
+- [ ] Gravity test passes (Z ≈ 1g)
+- [ ] ADXL345 support compiles (framework proof)
+
+**Phase 2: Feature Extraction (Days 2-3)**
+- [ ] Buffer 256 samples (21ms window @ 12 kHz)
+- [ ] Compute RMS, kurtosis, crest, variance
+- [ ] Output 4D feature vector
+- [ ] Match CWRU feature magnitudes
+
+**Phase 3: Current Monitoring (Week 2, optional)**
+- [ ] ACS712 wired to ADC pin
+- [ ] RMS current calculation (window-based)
+- [ ] Feature vector expands to 5D: [accel_x, accel_y, accel_z, accel_features, current_rms]
+- [ ] Correlate current spikes with vibration
+
+**Phase 4: CWRU Validation (Week 2)**
+- [ ] Stream dataset via Serial
+- [ ] Run Phase 1/2/3 experiments
+- [ ] Generate confusion matrices

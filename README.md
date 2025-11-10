@@ -17,6 +17,15 @@ Single Arduino sketch. Any board (ESP32, RP2350, Arduino, others). Streaming k-m
 
 Validate with CWRU dataset and hardware test rig.
 
+## Current Status (Week X/14)
+
+- ✅ Core algorithm: Streaming k-means implemented
+- ✅ Platforms: ESP32-S3, RP2350 auto-detect working
+- 🚧 Dataset streaming: In progress (Serial approach)
+- 🚧 Sensor integration: ADXL345 wiring complete, code integration pending
+- ⏳ HITL corrections: Design complete, MQTT implementation next
+- ⏳ CWRU validation: Pipeline ready, awaiting sensor data
+
 ## Quick Start
 
 **Install (5 min)**

@@ -79,6 +79,44 @@ const PROGMEM fixed_t dataset[] = {/* binary data */};
 // Loop through array, feed to kmeans_update()
 ```
 
+## Streaming to MCU (MVP: Serial Approach)
+
+**Decision:** Serial streaming chosen for MVP (no hardware dependencies).
+
+**PC-side Python script** (`tools/stream_dataset.py`):
+```python
+import serial
+import struct
+
+def stream_binary(port, binary_file):
+    ser = serial.Serial(port, 115200)
+    with open(binary_file, 'rb') as f:
+        header = f.read(16)
+        ser.write(header)
+
+        while chunk := f.read(256):  # 64 samples × 4 bytes
+            ser.write(chunk)
+            ack = ser.read(1)  # Wait for MCU ready
+```
+
+**MCU-side Arduino code** (`core/core.ino`):
+```cpp
+void stream_from_serial() {
+  if (Serial.available() >= sizeof(fixed_t) * model.feature_dim) {
+    fixed_t sample[MAX_FEATURES];
+    Serial.readBytes((char*)sample, sizeof(sample));
+    uint8_t cluster = kmeans_update(&model, sample);
+    Serial.write(0x06);  // ACK byte
+  }
+}
+```
+
+**Why Serial:**
+- No SD card wiring required
+- Fast iteration (10 seconds to restart test)
+- Works on all platforms (USB-CDC)
+- Fallback: Embed small dataset in Flash later if needed
+
 ## Binary Format Specification
 
 ### Header (16 bytes)
