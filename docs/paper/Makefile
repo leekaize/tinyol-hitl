@@ -1,60 +1,51 @@
-# TinyOL-HITL Paper Build System
+# IEEE LaTeX Build System
+LATEX = pdflatex
+BIBTEX = bibtex
+TARGET = paper
+SRC = $(TARGET).tex
+BIB = references.bib
+PDF = $(TARGET).pdf
 
-PANDOC = pandoc
-PDFOPTS = --pdf-engine=xelatex --number-sections --variable=geometry:margin=1in
-BIBOPTS = --bibliography references.bib --csl ieee.csl --citeproc
+.PHONY: all pdf clean watch quick
 
-.PHONY: all pdf docx latex clean watch
-
+# Full build with bibliography
 all: pdf
 
-pdf: paper.md references.bib metadata.yaml
-	$(PANDOC) metadata.yaml paper.md \
-		--from markdown \
-		--to pdf \
-		--output build/paper.pdf \
-		$(BIBOPTS) $(PDFOPTS)
-	@echo "✓ PDF generated: build/paper.pdf"
+pdf: $(SRC) $(BIB)
+	$(LATEX) $(TARGET)
+	$(BIBTEX) $(TARGET)
+	$(LATEX) $(TARGET)
+	$(LATEX) $(TARGET)
+	@echo "✓ PDF generated: $(PDF)"
 
-docx: paper.md references.bib metadata.yaml
-	$(PANDOC) metadata.yaml paper.md \
-		--from markdown \
-		--to docx \
-		--output build/paper.docx \
-		$(BIBOPTS)
-	@echo "✓ DOCX generated: build/paper.docx"
+# Quick compile (no bib update)
+quick: $(SRC)
+	$(LATEX) $(TARGET)
+	@echo "✓ Quick PDF generated: $(PDF)"
 
-latex: paper.md references.bib metadata.yaml
-	$(PANDOC) metadata.yaml paper.md \
-		--from markdown \
-		--to latex \
-		--output build/paper.tex \
-		$(BIBOPTS) \
-		--standalone
-	@echo "✓ LaTeX generated: build/paper.tex"
-
-# For IEEE conference submission (requires template)
-ieee: paper.md references.bib metadata.yaml templates/ieee.latex
-	$(PANDOC) metadata.yaml paper.md \
-		--from markdown \
-		--to pdf \
-		--output build/paper_ieee.pdf \
-		$(BIBOPTS) \
-		--template templates/ieee.latex \
-		--pdf-engine=xelatex
-	@echo "✓ IEEE format: build/paper_ieee.pdf"
-
-# Check for uncited percentages (common error)
-check:
-	@echo "Checking for uncited quantitative claims..."
-	@grep -n "%" paper.md | grep -v "@" || echo "✓ All percentages cited"
-
+# Clean auxiliary files
 clean:
-	rm -rf build/*
+	rm -f *.aux *.bbl *.blg *.log *.out *.toc *.lof *.lot *.fls *.fdb_latexmk *.synctex.gz
+	@echo "✓ Cleaned auxiliary files"
 
-# Auto-rebuild on file changes (requires inotify-tools)
+# Clean everything including PDF
+distclean: clean
+	rm -f $(PDF)
+	@echo "✓ Cleaned all generated files"
+
+# Auto-rebuild on changes (requires inotify-tools)
 watch:
 	@echo "Watching for changes... (Ctrl+C to stop)"
-	@while inotifywait -e modify paper.md references.bib 2>/dev/null; do \
-		make pdf; \
+	@while inotifywait -e modify $(SRC) $(BIB) 2>/dev/null; do \
+		make quick; \
 	done
+
+# Count words in document (approximate)
+wordcount:
+	@texcount -inc -incbib $(SRC)
+
+# Check for common LaTeX errors
+check:
+	@echo "Checking for common issues..."
+	@grep -n "\\cite{}" $(SRC) && echo "⚠ Empty citations found" || echo "✓ No empty citations"
+	@grep -n "???" $(TARGET).log 2>/dev/null && echo "⚠ Undefined references" || echo "✓ All references defined"

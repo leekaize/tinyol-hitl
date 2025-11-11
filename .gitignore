@@ -29,7 +29,6 @@ test_results/
 
 # Documentation builds
 docs/_build/
-*.pdf
 
 # Temporary files
 tmp/
