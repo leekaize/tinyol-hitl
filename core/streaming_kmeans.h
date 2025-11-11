@@ -43,6 +43,10 @@ typedef struct {
     bool initialized;                 // Model ready flag
 } kmeans_model_t;
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 // API Functions
 
 /**
@@ -74,16 +78,16 @@ uint8_t kmeans_predict(const kmeans_model_t* model, const fixed_t* point);
 /**
  * Get cluster centroid
  * @param model Model to query
- * @param cluster_id Cluster index
+ * @param cluster_id Cluster index (0 to k-1)
  * @param centroid Output buffer (length = feature_dim)
- * @return true if valid cluster_id
+ * @return true if successful
  */
 bool kmeans_get_centroid(const kmeans_model_t* model, uint8_t cluster_id, fixed_t* centroid);
 
 /**
- * Calculate total inertia (sum of squared distances)
- * @param model Model to evaluate
- * @return Total inertia value
+ * Get total inertia (sum of all cluster variances)
+ * @param model Model to query
+ * @return Total inertia
  */
 fixed_t kmeans_inertia(const kmeans_model_t* model);
 
@@ -94,19 +98,20 @@ fixed_t kmeans_inertia(const kmeans_model_t* model);
 void kmeans_reset(kmeans_model_t* model);
 
 /**
- * Apply human-in-the-loop correction
+ * Human-in-the-loop correction
  * @param model Model to update
- * @param point Sample to relabel (feature vector)
- * @param old_cluster Current cluster assignment
- * @param new_cluster Correct cluster (human label)
- * @return true on success, false if invalid parameters
+ * @param point Misclassified point
+ * @param old_cluster Current (wrong) cluster
+ * @param new_cluster Correct cluster
+ * @return true if successful
  */
 bool kmeans_correct(kmeans_model_t* model,
                     const fixed_t* point,
                     uint8_t old_cluster,
                     uint8_t new_cluster);
 
-// Helper: Squared Euclidean distance (fixed-point)
-fixed_t distance_squared(const fixed_t* a, const fixed_t* b, uint8_t dim);
+#ifdef __cplusplus
+}
+#endif
 
-#endif // STREAMING_KMEANS_H
+#endif
