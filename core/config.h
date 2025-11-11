@@ -1,7 +1,12 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-// Auto-detect platform (ESP32 or RP2350 only)
+// ===== OPERATION MODE =====
+// Uncomment ONE mode:
+#define MODE_DATASET       // Stream CWRU via Serial
+// #define MODE_SENSOR     // Live sensor reading (not implemented)
+
+// ===== PLATFORM AUTO-DETECT =====
 #if defined(ARDUINO_ARCH_ESP32)
   #define PLATFORM_ESP32
   #define LED_PIN 2
@@ -14,15 +19,15 @@
   #error "Unsupported platform. Use ESP32-S3 or RP2350 (Pico 2 W)"
 #endif
 
-// WiFi Configuration
-#define WIFI_SSID "YourSSID"
-#define WIFI_PASSWORD "YourPassword"
-#define MQTT_BROKER "192.168.1.100"
-#define MQTT_PORT 1883
+// ===== MODEL LIMITS =====
+#define MAX_FEATURES 64    // Must match streaming_kmeans.h
 
-// Model Configuration
-#define NUM_CLUSTERS 3
-#define FEATURE_DIM 2
-#define LEARNING_RATE 0.2f
+// ===== WIFI CONFIG (future use) =====
+#ifdef HAS_WIFI
+  #define WIFI_SSID "YourSSID"
+  #define WIFI_PASSWORD "YourPassword"
+  #define MQTT_BROKER "192.168.1.100"
+  #define MQTT_PORT 1883
+#endif
 
 #endif

@@ -22,10 +22,11 @@ Validate with CWRU dataset and hardware test rig.
 
 - ✅ Core algorithm: Streaming k-means implemented
 - ✅ Platforms: ESP32-S3, RP2350 auto-detect working
-- 🚧 Dataset streaming: In progress (Serial approach)
+- ✅ Dataset streaming: Serial pipeline working (~16 samples/sec)
+- ✅ CWRU pipeline: Binary conversion complete (4 fault types, 1904 samples)
+- 🚧 Baseline validation: In progress (clustering test)
 - 🚧 Sensor integration: ADXL345 wiring complete, code integration pending
 - ⏳ HITL corrections: Design complete, MQTT implementation next
-- ⏳ CWRU validation: Pipeline ready, awaiting sensor data
 
 ## Quick Start
 
@@ -43,7 +44,7 @@ https://espressif.github.io/arduino-esp32/package_esp32_index.json,https://githu
 ```bash
 # File → Open → core/core.ino
 # Tools → Board: Select your board
-# Tools → Port: Select USB port
+# Tools → Port: /dev/ttyACM0 (or /dev/ttyUSB0)
 # Sketch → Upload
 ```
 
@@ -53,27 +54,62 @@ https://espressif.github.io/arduino-esp32/package_esp32_index.json,https://githu
 # See: Platform detected, WiFi connected, Model initialized
 ```
 
+**Stream Dataset**
+
+```bash
+cd data/datasets/cwru
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+
+# Download and convert CWRU data
+python3 download.py
+python3 extract_features.py --input raw/ --output features/
+python3 to_binary.py --input features/ --output binary/
+
+# Stream to Arduino
+sudo python3 ../../tools/stream_dataset.py /dev/ttyACM0 binary/97_features.bin
+```
+
+**Success check:** "Progress: 1904/1904", "Failed ACKs: 0"
+
 ## Supported Platforms
 
-| Platform | WiFi | Memory | Speed | Use Case |
-|----------|------|--------|-------|----------|
-| ESP32-S3 | ✓ | 520 KB | 240 MHz | Production (WiFi + MQTT) |
-| RP2350 (Pico 2 W) | ✓ | 520 KB | 150 MHz | Power comparison |
+| Platform | WiFi | Memory | Speed |
+|----------|------|--------|-------|
+| ESP32-S3 | ✓ | 520 KB | 240 MHz |
+| RP2350 (Pico 2 W) | ✓ | 520 KB | 150 MHz |
 
 ## Project Structure
 ```
 core/                # Arduino sketch (ESP32 + RP2350)
+├── core.ino         # Main entry point (dataset streaming)
+├── config.h         # Platform auto-detect
+├── streaming_kmeans.{h,c}  # Core algorithm
+├── platform_*.cpp   # Platform-specific WiFi/storage
+└── tests/           # Test kmeans and hitl
+
+
+
+data/datasets/cwru/   # CWRU bearing dataset
+├── download.py       # Fetch .mat files
+├── extract_features.py  # Compute RMS/kurtosis/crest/variance
+├── to_binary.py      # Convert to Q16.16 binary
+├── binary/           # Ready for streaming
+└── tools/stream_dataset.py  # Serial streaming (Python)
+
+
 libraries/           # MQTT connector
 integrations/        # supOS-CE, RapidSCADA
-data/datasets/cwru/  # Download, convert tools
 hardware/test_rig/   # Motor specs, wiring
 tools/power_profiling/ # Current measurement
-platforms/rp2350/    # Native SDK reference (deprecated)
 ```
 
 ## Why Arduino IDE
 
-Pragmatic for <30 days:
+Build an open library for community, align with the ease-of-use.
+
+Also pragmatic for quickly deliver research results:
 - Single codebase, support MCU of different brands
 - Mature WiFi/MQTT libraries
 - 5-second upload iteration
@@ -82,9 +118,15 @@ Pragmatic for <30 days:
 
 ## Hardware Validation
 
-**Test Rig:** 0.5 HP motor, ADXL345 sensor, 3 platforms
+**Test Rig:** 0.5 HP motor, GY521/ADXL345 sensor, 2 platforms
 **Dataset:** CWRU bearing faults (public, reproducible)
-**Power:** ESP32 vs RP2350 comparison
+**Power:** ESP32 vs RP2350 comparison (future)
+
+## Dataset Streaming
+
+**Current:** Serial @ 115200 baud, ~16 samples/sec
+**Format:** 16-byte header + Q16.16 fixed-point samples
+**Tested:** 4 fault types (normal, ball, inner, outer)
 
 ## Use Cases
 
@@ -94,11 +136,9 @@ Pragmatic for <30 days:
 ## Documentation
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - System design
-- [docs/DATASETS.md](docs/DATASETS.md) - CWRU methodology
-- [docs/HARDWARE.md](docs/HARDWARE.md) - Test rig setup
-- [docs/POWER.md](docs/POWER.md) - Profiling guide
-- [hardware/test_rig/](hardware/test_rig/) - Wiring diagrams
-- [integrations/](integrations/) - SCADA integration
+- [docs/DATASETS.md](docs/DATASETS.md) - CWRU workflow
+- [docs/HARDWARE.md](docs/HARDWARE.md) - Test rig (future)
+- [docs/TASK_LIST.md](docs/TASK_LIST.md) - Sprint progress
 
 ## Contributing
 
