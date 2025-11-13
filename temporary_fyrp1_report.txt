@@ -1,0 +1,1245 @@
+Abstract
+This progress report details the development of an edge-based energy and condition monitoring
+system for industrial machinery, leveraging the capabilities of Tiny Machine Learning (TinyML). The
+primary objective is to create an easy to implement and adaptable predictive maintenance (PdM)
+system targeting to bring value for small and medium enterprises (SMEs).
+The research involved setting up an ESP32-based microcontroller unit (MCU) connected to various
+sensors to collect and preprocess data from machinery. Literature review was done, and a full-
+fledged  framework  is  proposed  to  tackle  research  problems.  Current  progress  demonstrates
+successful data acquisition and preprocessing, with the ESP32 effectively interfacing with a GY-521
+accelerometer and performing Fast Fourier Transform (FFT) for frequency analysis. Data was then
+transmitted to an InfluxDB cloud database for storage and further analysis.
+The  project  implements  a  series  of  machine  learning  models:  an  autoencoder  for  dimensional
+reduction,  an  Isolation  Forest  for  anomaly  detection,  and  K-Means  clustering  for  multi-class
+classification.
+Future work includes developing the software pipelines, refining these models for better accuracy,
+and conducting extensive field trials to validate the system's performance in real-world industrial
+environments.
+
+
+5
+Chapter 1:  Introduction
+1.1 Background
+Industry  4.0  focuses  on  improving  factory  processes  through  Cyber-Physical  Systems  (CPS),
+Industrial  Internet  of  Things  (IIoT),  Artificial  Intelligence  (AI),  and  Cloud  Computing.  Machines
+equipped  with  sensors  are  interconnected  via  local  or  cloud  networks,  forming  the  IIoT.  These
+networks leverage AI to make decisions and utilize robotic systems to execute complex tasks. Cloud
+computing  is  often  used  for  storage  and  communication.  This  integration  of  automation,
+communication, and monitoring leads to more efficient industrial processes [1
+].
+
+Figure 1: Example of Traditional Industry 4.0 Setup.
+Industry 4.0 significantly benefits from Predictive Maintenance (PdM), which uses AI to analyse
+machine data and detect anomalies or faulty patterns [2]. Cost-benefit analyses have shown that
+advanced  diagnostics  and  prognostics  can  lead  to  substantial  savings  by  preventing  unplanned
+downtime and extending machinery life [3].
+PdM often relies heavily on central servers for data processing and machine learning, increasing
+latency and posing challenges in terms of network bandwidth, data management, and real-time
+responsiveness.  Different  paradigms  have  been  proposed  to  address  the  issues  of  cloud-based
+predictive maintenance [4
+].
+Microcontroller Units (MCUs) are typically deployed to communicate machine sensor data to the
+cloud. Since data communication is a minimal task for current MCUs, their extra computing power
+can be utilized for other functions. The emergence of Tiny Machine Learning (TinyML), deployed on
+MCUs, brings intelligence directly to the machinery, enabling real-time decision-making with lower
+bandwidth  requirements  (as  seen  in  Figure  2).  TinyML  allows  large  neural  networks  to  be
+compressed into small yet accurate models suitable for running on MCUs [5
+].
+
+6
+
+Figure 2: Example of Industry 4.0 Setup with Edge Computing.
+Despite the advancements, limitations and research gaps remain in applying TinyML in industrial
+settings. This research focuses on ease-of-implementation and adaptability aspects. Some studies
+have applied unsupervised learning models, which allow for easy implementation without requiring
+machine failure data (often impossible to acquire) for training the model [6, 7
+]. Other studies have
+applied  incremental/online  learning  models  to  achieve  adaptable  systems  that  maintain  good
+prediction accuracy as machine data drifts over time [7, 8].
+This research aims to achieve a streamlined architecture with state-of-the-art TinyML workflows
+for an unsupervised and adaptable condition monitoring system. A knowledge-based expert system
+will be developed as a web application for users to extract insights. Such systems enable lower
+technical personnel to fully utilize and maintain functionality, overcoming financial constraints, lack
+of technical expertise, and resistance to change among employees, which are common barriers to
+Industry 4.0 adoption [1
+].
+1.2 Research Questions
+1.  How can unsupervised TinyML improves ease of implementation for system integrator on
+Edge-based Condition Monitoring Systems?
+2.  How  can  incremental  learning  be  effectively  applied  to  enhance  the  adaptability  and
+sustainability of Edge-based Condition Monitoring Systems?
+3.  How can the edge-based condition monitoring results be processed and presented through
+a Knowledge-Based Expert System to effectively extract business or operational insights?
+
+
+
+7
+1.3 Aim and Objectives
+Aim:  To  develop  a  cost-effective  and  easy-to-implement  predictive  maintenance  system  for
+industrial machinery in SMEs. Leveraging unsupervised incremental learning with TinyML on MCU
+to improve performance, adaptability, and integrating a cloud platform with a knowledge base to
+enable businesses to extract clear value from the system.
+Objectives:
+•  Investigate and Implement TinyML Technologies: Explore the application of TinyML on MCUs
+to develop a real-time, edge-based predictive maintenance system for industrial machinery,
+focusing on the reduction of reliance on central servers and minimizing network bandwidth
+usage.
+•  Benchmark Unsupervised Learning Models: Implement and benchmark unsupervised learning
+models using TinyML that can be easily deployed without the need for pre-existing failure data,
+thereby facilitating easier system integration.
+•  Enhance System Adaptability and Sustainability: Utilize incremental learning techniques to
+ensure  that  the  predictive  maintenance  system  remains  accurate  and  reliable  as  machine
+conditions change over time, thereby enhancing the adaptability and long-term sustainability
+of the system.
+•  Integrate  a  Cloud  Platform  with  Knowledge  Base:  Integrate  a  cloud  platform  that
+complements  the  edge-based  system  to  ensure  that  data  management  and  analytics  are
+handled  efficiently.  This  integration  will  enhance  the  system’s  ability  to  deliver  actionable
+insights and demonstrate clear business value to end-users through a Knowledge-Based Expert
+System.
+
+
+8
+1.4 Problem Statements
+Traditional  cloud-based  predictive  maintenance  systems  face  several  limitations,  which  this
+research aims to address by implementing TinyML with unsupervised and incremental learning on
+edge devices:
+•  Cost, Latency, and Real-Time Processing Limitations: Relying on central servers introduces
+significant latency, higher costs due to network bandwidth and cloud servers, complex data
+management, and delayed responsiveness.
+•  Challenges  in  Implementation:  Predictive  maintenance  models  often  require  extensive
+data infrastructure, which is challenging for SMEs lacking technical expertise and financial
+resources. Supervised learning models require failure data, which is often unavailable.
+•  Limited Adaptability to Changing Conditions: Existing PdM systems struggle to maintain
+accuracy as machine conditions evolve. The lack of incremental learning capabilities means
+they cannot adapt to new data, leading to suboptimal maintenance decisions and increased
+operational risks.
+•  Difficulty  in  Bringing  Business  Value:  Many  predictive  maintenance  systems  fail  to
+translate machine learning output into actionable business or operational insights. This gap
+hinders organizations to realise the full potential of these systems.
+1.5 Research Hypothesis
+1.  Implementing unsupervised TinyML on Microcontroller Units (MCUs) significantly reduces
+the  complexity  and  resource  requirements  for  system  integration  in  predictive
+maintenance, thereby improving ease of implementation for system integrators in small
+and medium enterprises (SMEs).
+2.  Incremental  learning  techniques  applied  within  a  TinyML  framework  on  edge  devices
+enhance the adaptability and sustainability of condition monitoring systems, allowing these
+systems to maintain high predictive accuracy even as machine data evolves over time.
+3.  Edge-based  condition  monitoring  systems  that  utilize  TinyML,  integrated  with  a  cloud
+platform and Knowledge-Based Expert System, can effectively communicate maintenance
+insights and demonstrate clear business value to SMEs, leading to improved operational
+decision-making and reduced maintenance costs.
+
+9
+1.6 Research Scope
+This research focuses on advancing predictive maintenance workflows through the application of
+Tiny Machine Learning (TinyML) on Microcontroller Units (MCUs) in industrial settings. Key areas
+of focus include:
+1.  Implementation of TinyML on MCUs: Reducing reliance on centralized cloud servers to
+minimize bandwidth consumption and costs.
+2.  Unsupervised  Learning  Models:  Implementing  and  benchmarking  models  that  do  not
+require labelled training data, facilitating easier integration for SMEs.
+3.  Incremental  Learning  for  System  Adaptability:  Enabling  continuous  learning  and
+adaptation without manual retraining, maintaining system accuracy as conditions change.
+4.  Integration with Cloud Platforms: Ensuring machine learning outputs are explainable and
+useful for clients, enhancing decision-making through a Knowledge-Based Expert System.
+1.7 Research Significance
+This  research  is  significant  within  the  context  of  Industry  4.0  and  predictive  maintenance,
+particularly for its potential to:
+1.  Advance  Predictive  Maintenance  Technologies:  Demonstrating  how  TinyML  with
+incremental  and  unsupervised  learning  models  can  reduce  dependency  on  centralized
+servers, lowering operational costs while maintaining functionality.
+2.  Improve Accessibility for SMEs: Simplifying the implementation and reducing the cost of
+maintenance systems, making advanced technologies accessible to SMEs.
+3.  Enhance  Sustainability  and  Adaptability:  Incorporating  incremental  learning  models  to
+allow continuous updates without manual reprogramming, maintaining system reliability.
+4.  Contribute to Industry 4.0: Providing valuable insights into the implementation of TinyML
+in industrial settings, facilitating future developments.
+5.  Enable Enhanced Machine Autonomy and Real-time Decision Making: Potentially allowing
+machinery  to  process  data  and  make  decisions  independently,  reducing  downtime  and
+preventing costly interruptions.
+
+10
+Chapter 2:  Literature Review
+2.1 Industry 4.0
+Khin and Kee [1] suggest that that Industry 4.0 adoption mainly affected by three factors:
+•  Driving Factors: Companies are motivated by the need to streamline operations, stay ahead in
+a  competitive  market,  and  address  both  labour  shortages  and  changing  customer
+expectations.  This  shows  why  these  cutting-edge  technologies  matter  for  improving  how
+things is made and following the trend.
+•  Facilitating Factors: Making that Industry 4.0 leap means having the right mix of resources
+(technologies  and  skilled  workers),  a  company  culture  that's  open  to  change,  and  some
+government  support.  This  support  system  is  vital  for  giving  companies  the  framework  for
+innovation.
+•  Impeding Factors: Barriers like tight budgets, not having in-house tech experts, and employees
+who  may  need  convincing  hold  some  companies  back.  To  overcome  this,  businesses  need
+careful plans, maybe some training programs, and ways to manage the transition smoothly for
+everyone involved.
+Companies  are  best  positioned  to  adopt  Industry  4.0  when  they  understand  these  strong
+motivators, have the necessary resources, and can tackle any roadblocks. This helps them strategize
+and make this whole Industry 4.0 transition a success. Maturity model is often a good first step to
+embark the transformation journey.
+It's worth noting that standard Industry 4.0 maturity models sometimes start at "level 1", which can
+be misleading for a lot of small and medium-sized businesses, as it doesn't reflect how far along,
+they are with digital tools and smart manufacturing. Mittal, et al. [9]
+ suggest including a "level 0"
+as a more realistic starting point for these companies. Similarly, the maturity model proposed by
+Santos and Martinho [10] is designed to assess a company's level of implementation of Industry 4.0
+technologies  across  five  dimensions:  organizational  strategy,  structure,  and  culture;  workforce;
+smart factories; smart processes; smart products and services. It utilizes 41 variables to measure
+maturity and provides a roadmap for companies to progress in their Industry 4.0 journey. Each
+dimension  is  evaluated  in  6  levels  of  maturity  (Level  0  to  5)  which  the  Level  0  to  4  are  the
+incremental steps to achieve state-of-the-art Level 5.
+
+
+11
+2.1.1 Industrial Internet of Things (IIoT)
+In conjunction of Industry 4.0, according to Shah, et al. [11], developed countries have already
+adopted IIoT technologies, bringing improvement on efficiency, productivity and decision-making.
+Meanwhile, manufacturing and production SMEs in developing countries still having a hard time to
+adopt. The study identified 47 factors influencing IIoT adoption, categorized under Technological,
+Organisational, Environmental, and Individual (TOEI) factors.
+Discussed  in  [12],  the  IIoT  architecture  is  a  complex  network  infrastructure  including  sensors,
+gateways, and data processing units, which work together to collect, transmit, and analyse data.
+The architecture can be split into four layers:
+•  Perception  Layer,  composed  of  sensors  and  devices  that  collect  data  from  the  physical
+environment.
+•  Network Layer, responsible for data transmission, connecting the perception layer with higher
+levels through various communication protocols.
+•  Processing  Layer,  manages  data  processing,  storage,  and  analysis,  turning  raw  data  into
+actionable insights.
+•  Application Layer, where IIoT applications interface with users, delivering smart solutions and
+controls for manufacturing processes.
+The same layers of IIoT architecture applies to different smart industries including Transportation
+and Logistics, Healthcare, Energy Consumption Monitoring, and Smart Factory.
+
+2.1.2 Predictive Maintenance (PdM)
+Challenges  in  implementing  PdM,  as  discussed  by  Achouch,  et  al.  [13],  include  financial  and
+organizational constraints, data management complexities, and the technical challenges associated
+with machine repair activities and model deployment.
+Many PdM models can be offered depending on the digital maturity level, three main models are
+discussed in [2] and [13]:
+•  Condition-Based Maintenance (CBM): Monitors real-time equipment data, like vibration and
+temperature,  to  schedule  maintenance  only  when  needed,  aiming  to  prevent  unnecessary
+work and reduce downtime.
+•  Prognostics  and  Health  Management  (PHM):  Goes beyond  CBM  by  forecasting  the  future
+reliability  of  components,  integrating  continuous  monitoring  with  data  analysis  to  pre-
+emptively address potential failures.
+
+12
+•  Remaining Useful Life (RUL): Estimates the time a component can reliably function before it
+requires  repair  or  replacement,  facilitating  optimized  maintenance  planning  and  resource
+allocation.
+
+2.1.3 Condition Monitoring
+According to Moiz, et al. [14], around 90% of industrial processes are dependent on Induction motor
+due to the robust and economical nature of it. Failure of induction motors must be diagnosed on
+time  to  prevent  unexpected  downtime  and  revenue  loss.  The main  reasons  of  medium-voltage
+induction motor failure include stator faults (like winding openings or short circuits), rotor cage
+failures (such as broken rotor bars or end-rings), air-gap irregularities, and bearing and gearbox
+failures. Thermal overload, high electrical and mechanical stresses, and environmental factors like
+high ambient temperature and moisture significantly contribute to these failures [
+15].
+The  techniques  of  Current  Signature  Analysis  (CSA)  and  Vibration  Signature  Analysis  (VSA)  are
+normally  employed  for  induction  motor  predictive  maintenance.  CSA  uses  spectral  analysis,
+specifically  Fast  Fourier  Transform  (FFT),  to  examine  stator  currents  and  identify  unique  fault
+harmonics indicative of mechanical issues like bearing faults. VSA, on the other hand, applies FFT
+to the frequency spectrum of motor housing vibrations to detect mechanical faults, such as bearing
+damages and unbalanced loads [14
+].
+The motor faults can be classified into five groups which shows the likelihood of specific fault type.
+The  groupings  are  decided  by  motor’s  shaft  speed  dominant  peaks  or  sideband  frequencies  in
+frequency spectrum, grouped as Synchronous, Harmonic, Sub-synchronous, Non-synchronous and
+Modulation group [16
+].
+
+2.1.4 Perception Devices
+Vibration  Signature  Analysis  can  be  done  with  a  range  of  different  sensors  such  as  ADXL355
+Accelerometer  [16],  GY521  Accelerometer-Gyroscope  Sensor  [17],  LM6DSOX  Movement  Sensor
+with accelerometer, magnetometer, and a gyro [18], IIS3DWB Vibrometer [19]. To get an in-depth
+condition monitoring, researchers often add in other sensors [17-19]:
+•  MEMS microphones to pick up sound patterns and unusual noise levels.
+•  Hall effect sensors to spot changes in the electromagnetic fields around electric motors.
+•  Humidity  sensors  to  keep  tabs  on  moisture  levels,  and  temperature  sensors  to  detect
+equipment overheating.
+
+13
+As for the core vibration sensors, two main types are: Capacitive Microelectromechanical System
+(MEMS) accelerometers and piezoelectric accelerometers. MEMS accelerometers are known for
+grabbing data from multiple axes at once while keeping power use low [16
+]. The ADXL family of
+MEMS accelerometers strikes a nice balance between how well it handles noise, its bandwidth, and
+its g-range – this balance makes them a solid fit for lots of Condition-based Monitoring needs [20].
+
+2.1.5 Communication and Network Layer
+As  discussed  in  [21],  the  three  common  data  acquisition  serial  communication  protocols  have
+distinct characteristics:
+•  UART  (Universal  Asynchronous  Receiver/Transmitter):  Asynchronous  communication
+method that doesn't require a shared clock between devices, using start and stop bits to frame
+data  packets.  Ideal  for  low-cost,  minimal  wiring  setups  where  timing  variances  are
+manageable.
+•  SPI (Serial Peripheral Interface): Synchronous communication with a shared clock, enabling
+higher data rates. Utilizes a master-slave setup with separate lines for data send and receive,
+suitable for short-distance, high-speed data transfer. This is the chosen interface for [16
+] due
+to the faster communication compared to I2C bus.
+•  I2C (Inter-Integrated Circuit): This protocol needs just two wires and lets multiple devices chat
+with each other. It's half-duplex (one way at a time) and works like a shared phone line – good
+for connecting a bunch of devices in a small area.
+As  discussed  in  [22
+],  a  few  OT  Network  Protocols  can  be  used  for  direct  communication  with
+industrial devices and include protocols such as: Modbus, OPC UA (Open Platform Communications
+Unified Architecture), BACnet (Building Automation and Control Networks) and S7. Simpler sensor-
+to-gateway data transmission normally utilise BLE (Bluetooth Low Energy). [
+16, 18, 19]
+IT  Network  Protocols,  used  for  higher-level  data  communication  and  management  in  the  IIoT
+framework are also discussed in [22], including:
+•  MQTT  (Message  Queuing  Telemetry  Transport):  The  default  choice  for  recent  projects,
+including [16] and [18]. It's designed for lightweight machine-to-machine (IoT) communication,
+with a simple 'publish/subscribe' messaging.
+•  Ethernet, a family of networking technologies used in local area networks (LANs).
+•  Wi-Fi, a technology for wireless local area networking with devices based on the IEEE 802.11
+standards.
+
+14
+•  NB-IoT  (Narrowband  IoT),  a  standards-based  low  power  wide  area  (LPWA)  technology
+developed to enable a wide range of new IoT devices and services.
+
+2.1.6 Processing and Application Layer
+Processing Layer handles data analysis, storage, and decision-making processes. It's where machine
+learning  algorithms  can  be  applied  to  interpret  and  act  on  the  data  collected  by  sensors.  The
+Application  Layer  then  uses  this  processed  data  to  drive  IIoT  applications,  facilitating  user
+interaction and decision-making. It translates the insights gained from machine learning algorithms
+into actionable information, enabling predictive maintenance, optimization, and enhanced control
+over industrial processes [12
+].
+The traditional predictive maintenance often requires expert analysis on the monitored data to
+identify conditions [16-19]. Machine learning has been the recent focus of research for feature
+extraction enabling more efficient fault diagnostic [23].
+
+
+15
+2.2 Summary of Literature Review on IR4.0, PdM and CM
+Industry 4.0 Considerations
+
+Figure 3: Main Considerations for Industry 4.0 Implementation.
+For industrial implementation, maturity models will be used to assess the company Industry 4.0
+readiness  [9,  10],  then  an  implementation  plan  will  be  developed  accordingly.  The  driving,
+facilitating  and  impeding  factors  will  be  considered  for  a  successful  implementation  [1].  This
+research  will  tackle  a  few  impeding  factors  by  providing  system  with  low  technical  expertise
+requirement and simple implementation.
+Predictive Maintenance and Condition Monitoring
+Condition-Based  Maintenance  through  Condition  Monitoring  are  well  established  for  Industrial
+Induction Motor [14-16]. The vibration and current signature can be analysed in both time and
+frequency domain. The known characteristics knowledge can be used to create the Knowledge-
+Based Expert System, providing insights into Machine Learning output.
+Layers within Industrial IoT Architecture
+
+Figure 4: Four Layers of IIoT Architecture.
+This  research  will  develop  a  streamlined  architecture  that  covers  all  the  4  layers  where  an
+implementation guide will be given for companies to follow [12].
+Perception Device: MEMS type accelerometers are ideal for low power consumption usage [16-19].
+The exact model chosen will be based on price and accuracy requirements of the project.
+Network and Communication: UART, SPI and I2C are all reliable OT Communication protocol for
+MCUs [21]. Industrial OT Protocols such as Modbus and OPC-UA can be connected to MCU through
+a  converter  [16,  18,  19].  IT  Network  Protocol  such  as  MQTT  will  be  utilised  for  lightweight
+communication [16] [18].
+Processing  and  Application:  Machine  Learning  can  be  applied  to  analyse  machine  conditions
+(feature  extraction)  automatically  [23].  The  insights  can  go  through  a  Knowledge-Based  Expert
+System and shown through a web application.
+
+
+16
+2.3 Machine Learning
+Machine  learning  in  predictive  maintenance  (PdM)  leverages  a  blend  of  supervised  and
+unsupervised techniques to predict and prevent equipment failures before they result in significant
+downtime.  Carvalho,  et  al.  [24]  outlines  how  various  machine  learning  approaches,  including
+statistical models, artificial intelligence, and model-based strategies, contribute to effective PdM.
+While  supervised  learning  utilizes  labelled  data  to  predict  equipment  failures,  unsupervised
+learning explores data to identify unseen patterns, offering insights where explicit labels are absent.
+
+2.3.1 Supervised Learning
+For  supervised  learning,  machine  learning  models  are  trained  on  a  labelled  dataset  to  make
+predictions or classifications based on previous data.
+Support Vector Machines (SVMs) and k-Nearest Neighbours (k-NN): Susto, et al. [25] presents a
+predictive  maintenance  (PdM)  model  utilising  a  combination  of  machine  learning  classifiers  to
+handle predictive tasks in high-dimensional settings typical of semiconductor manufacturing. The
+methodology  utilises  multiple  classifiers  to  manage  the  maintenance  schedules  effectively  by
+considering different classification problems for failure prediction.
+Decision Trees and Random Forests: Paolanti, et al. [26] discuss the implementation of a predictive
+maintenance  system  based  on  a  Random  Forest  classifier.  This  Machine  Learning  model  is
+employed  to  analyse  data  collected  from  various  sensors,  machine  PLCs,  and  communication
+protocols, processed and managed through the Azure Cloud architecture.
+Neural Networks: Convolutional neural networks (CNNs) and recurrent neural networks (RNNs),
+including Long Short-Term Memory networks (LSTMs), are common choices for modelling temporal
+dynamics in predictive maintenance tasks. Berghout, et al. [27] utilise a deep learning model based
+on Extreme Learning Machine (ELM) with local receptive fields for predictive maintenance. This
+model excels in handling dynamic and complex data structures typical of naval propulsion systems,
+offering  robust  feature  extraction  and  fault  diagnosis  capabilities.  The  approach  leverages
+supervised  learning  to  fine-tune  the  deep  belief  networks  (DBN)  after  an  initial  unsupervised
+training phase, enhancing the accuracy and generalization of maintenance predictions.
+Regression Techniques: Linear Regression is utilized for its simplicity and effectiveness in modelling
+the linear relationships between independent variables and the dependent variable (the condition
+or performance of transport systems). This approach is particularly beneficial for scenarios where
+
+17
+the relationships are well-defined and not overly complex, offering a straightforward interpretation
+and efficient computation. [28
+]
+
+2.3.2 Unsupervised Learning
+Unsupervised learning techniques are employed in predictive maintenance to analyse data without
+labelled class. These methods are particularly useful for discovering hidden patterns or intrinsic
+structures within maintenance data.
+Clustering:  Amruthnath  and  Gupta  [29]
+  focus  on  clustering  methods  like  PCA  T2  statistic,
+Hierarchical clustering, K-Means, Fuzzy C-Means clustering, and model-based clustering to analyse
+vibration  data  collected  from  an  exhaust  fan.  They  propose  a  methodology  to  select  the  best-
+performing  model  based  on  the  results,  thus  providing  a  structured  approach  to  implement
+unsupervised machine learning in predictive maintenance tasks.
+Principal  Component  Analysis  (PCA):  Sarita,  et  al.  [30]  emphasize  the  application  of  PCA,  this
+method is particularly effective for early fault detection in equipment like industrial induced draft
+(ID) fans, where high vibration levels can lead to failures. By transforming the data into a set of
+orthogonal principal components, PCA effectively reduces dimensionality while preserving most of
+the variance, thereby enhancing the interpretability and efficiency of the fault detection process.
+Autoencoder: A type of unsupervised neural networks, designed to learn data patterns and can
+pinpoint anything out of the ordinary. Simi and Resmi [31] utilise autoencoders to detect anomalies
+by learning the normal operational patterns and identifying deviations. Ali, et al. [32] employ an
+LSTM  autoencoder  to  manage  time-series  data,  capturing  temporal  dependencies  within  the
+operational  data  of  rotational  machinery  for  better  fault  prediction  and  RUL  estimation.
+Additionally,  Jakubowski,  et  al.  [33]  implement  a  Variational  Autoencoder  (VAE)  that  enhances
+anomaly detection by generating a probabilistic representation of input data, allowing for more
+nuanced understanding of asset condition changes.
+Isolation  Forest  (IF):  Operates  by  isolating  anomalies  instead  of  profiling  normal  data  points,
+effectively  identifying  discrepancies  in  data.  Martin-del-Campo  and  Al-Kahwati  [34]  integrate
+sparse  coding  with  dictionary  learning  and  Isolation  Forest  to  produce  an  anomaly  score  for
+predictive maintenance. Mousavi and Gandomi [35] apply the Variational Mode Decomposition
+(VMD)  algorithm  to  preprocess  frequency  signals,  enhancing  the  success  of  Isolation  Forest  in
+monitoring. It is shown that high accuracies for predictive maintenance can be achieved without
+labelled fault data. [
+36, 37]
+
+
+18
+2.3.3 Incremental Learning
+Incremental  Learning  (IL)  is  crucial  in  predictive  maintenance  (PdM)  for  handling  changing
+environments  where  data  distributions  slowly  evolve  over  long  time.  IL  can  be  leveraged  to
+continuously adapt predictive models to new data while retaining previously acquired knowledge,
+mitigating the  issue  of  catastrophic  forgetting. This  is  particularly vital  in  industrial  applications
+where machine conditions can shift due to factors like wear and tear, operational adjustments, or
+environmental changes. IL employs techniques that update the learning models incrementally as
+new data becomes available, ensuring the models remain effective over time despite changes in
+data characteristics [38
+].
+Incremental Feature Learning (IFL) is an advanced methodology that dynamically incorporates new
+features  into  a  predictive  model  without  retraining  from  scratch.  The  algorithm  developed  by
+Sadreddin and Sadaoui [39]
+ employs constructive neural networks to optimise network topology
+gradually  as  new  feature  groups  are  added.  This  approach  ensures  that  the  model  adapts  to
+changing data distributions effectively, enhancing predictive accuracy over time. The IFL algorithm
+constructs the neural network incrementally by adding new hidden units and connections for each
+new feature group.
+While incremental and continual learning offer significant advantages for adaptive maintenance
+systems, they also present challenges such as catastrophic forgetting, where the model loses the
+ability to recall previously learned information as it learns new patterns.
+1.  Mitigation  Strategies:  Various  strategies,  including  architectural  modifications,  memory
+systems, and optimization techniques, have been proposed to address catastrophic forgetting.
+For  example,  dual  memory  models  and  regularization  methods  help  preserve  critical
+knowledge while allowing the model to learn new information [39, 40
+].
+2.  Future Directions: Research continues to explore more efficient algorithms and frameworks
+that  can  balance  the  need  for  adaptation  with  the  constraints  of  edge  computing
+environments. Integrating these approaches with advanced data preprocessing and feature
+selection techniques can further enhance their effectiveness [39, 40
+].
+
+2.3.4 Knowledge-Based Expert System
+The  integration  of  Knowledge-Based  Expert  Systems  (KBES)  into  predictive  maintenance
+frameworks  leverage  domain-specific  expertise  to  diagnose  machine  conditions,  recommend
+maintenance  actions,  and  manage  maintenance  schedules,  thereby  reducing  downtime  and
+maintenance costs.
+
+19
+The EXPERT-MM system [41
+], is an established KBES designed to manage maintenance activities by
+leveraging  different  types  of  knowledge:  declarative,  procedural,  and  heuristic.  The  system
+architecture  integrates  a  database,  algorithms  and  models  base,  expert  system  module,  user
+interface, and a control program (processor). This system supports three main functions:
+1.  Maintenance Policy Suggestions: EXPERT-MM analyses historical failure data to recommend
+optimal  preventive  maintenance  intervals  using  a  rule-based  representation  scheme  and
+backward chaining inference strategy.
+2.  Machine  Diagnosis:  The  system  diagnoses  faults  in  machinery,  such  as  rotary  screw  air
+compressors, by structuring knowledge into decision tree diagrams and converting them into
+IF-THEN rules. This process facilitates the identification and localization of faults.
+3.  Maintenance  Scheduling:  The  system  generates  maintenance  schedules  based  on  optimal
+inspection intervals, ensuring timely preventive actions.
+
+Figure 5: Expert-MM Architecture. (Extracted from Batanov, et al. [41])
+A modern approach to KBES involves transforming Condition-Based Maintenance (CBM) models
+into  Complex  Event  Processing  (CEP)  rules  to  handle  large  volumes  of  real-time  data.  This
+transformation process, grounded in Model-Driven Architecture (MDA), involves converting CBM
+knowledge into generic rules and subsequently into Event Processing Language (EPL) rules [42
+].
+The  refinement  of  rule  bases  in  KBES  [43]  is  crucial  for  maintaining  accuracy  and  relevance  in
+predictive maintenance. This involves:
+1.  Rule Quality Measures: These measures assess the effectiveness of rules in predicting and
+diagnosing faults, guiding the refinement process.
+2.  Implementation:  By  continuously  updating  and  refining  the  rule  base,  the  KBES  remains
+adaptable to new data and evolving conditions.
+
+20
+2.4 Summary of Literature Review on ML for PdM
+
+Figure 6: PdM System Combining Supervised, Unsupervised, Incremental Learning and KBES.
+Supervised and Unsupervised Learning
+Supervised Learning, training models on labelled data, primarily used for predictive tasks with high
+accuracy,  such  as  failure  prediction  and  maintenance  schedule  optimization.  Techniques  like
+Support  Vector  Machines  (SVMs),  k-Nearest  Neighbours  (k-NN)  [25],  Decision  Trees  [26],  and
+Neural Networks (CNNs and RNNs) [27] are already well discovered to analyse historical data and
+predict  equipment  failures,  optimize  maintenance  schedules,  and  model  temporal  dynamics  in
+sensor data.
+Unsupervised Machine Learning is used when the data lacks labels, focuses on identifying hidden
+patterns or intrinsic structures within the data, making it suitable for anomaly detection and pattern
+discovery.  Techniques  such  as  Clustering  (K-Means,  Fuzzy  C-Means)  [29],  Principal  Component
+Analysis  (PCA)  [30],  Autoencoders  [31-33],  and  Isolation  Forests  [34-37]  are  used  to  analyse
+unlabelled data to detect anomalies, reduce data dimensionality, and isolate discrepancies.
+Incremental Learning
+This  approach  gradually  incorporates  new  features  into  the  model,  enhancing  its  predictive
+accuracy and adaptability to changing data distributions without retraining from scratch [38]. A
+significant  challenge  in  incremental  learning  is  catastrophic  forgetting,  where  the  model  loses
+previously acquired knowledge when new information is introduced [
+39, 40].
+Knowledge-Based Expert Systems (KBES)
+Although existed for more than 30 years [41], with more advanced machine learning capabilities
+and ML output from unsupervised models. Research on the system should be done to cater the
+intricacies. Modern approach such as EPL and Rule Quality Measures are considered [42, 43].
+
+21
+2.5 TinyML
+2.5.1 Core Principles
+1.  Resource Efficiency: TinyML focuses on executing machine learning models on devices with
+extremely limited computational resources under minimal energy consumption [5].
+2.  On-Device Inference: New data processing approaches can be considered, as more data are
+available without the complications to upload to cloud under high bandwidth [44].
+3.  Privacy  and  Security:  TinyML  inherently  improves  data  privacy  and  security.  Since  data
+remains on the device, it is less susceptible to breaches during transmission [44].
+4.  Low Latency: TinyML reduces the latency involved in making real-time decisions because the
+data does not need to be sent to a cloud server for processing [44].
+5.  Scalability  and  Deployment:  TinyML  offers  scalability  for  deploying  machine  learning
+capabilities across a wide array of devices and environments. This enables the proliferation of
+intelligent IoT devices without the need for continuous cloud connectivity [44].
+
+2.5.2 Technical Features
+1.  Model  Compression  Techniques:  TinyML  leverages  various  model  compression  techniques
+such  as  pruning,  quantization,  and  efficient  architectures  like  MobileNets.  These  methods
+reduce  the  size  and  complexity  of  ML  models,  making  them  suitable  for  deployment  on
+microcontrollers [5
+].
+2.  Energy  Efficiency:  A  critical  feature  of  TinyML  is  its  ability  to  operate  on  ultra-low  power
+devices. The combination of efficient hardware and optimized models ensures that TinyML
+applications can run on battery-powered devices for extended periods [44
+].
+3.  Hardware  and Software  Integration:  TinyML  frameworks  are  designed  to  work  seamlessly
+with a variety of hardware platforms. TensorFlow Lite Micro (TFLM), for instance, is specifically
+built for deep learning on microcontrollers with very limited memory, addressing hardware
+diversity and resource constraints [44
+].
+4.  Development Ecosystem: The TinyML ecosystem includes a broad array of tools and libraries
+that  facilitate  the  development,  training,  and  deployment  of  models.  Frameworks  like
+TensorFlow Lite Micro integrate with existing ML tools, allowing for model training on more
+powerful platforms before deployment on constrained devices [45
+].
+
+22
+2.5.3 Unsupervised TinyML Applications
+Below is a list of industrial related research using unsupervised TinyML models, but all consists of
+some weakness and need further improvement to suit the desired industrial application.
+Table 1: List of Unsupervised TinyML Algorithms Used on Existing Highly Related Research
+Algorithm/Model  Hardware and Settings  Summary
+Deep AE  General [46]  Emphasizing minimal memory
+use and computational overhead.
+TEDA  Arduino Nano 33 IoT – Vehicle [6]  Detect road surface anomalies
+with accelerometer data.
+DNN-Autoencoder  Arduino Nano 33 – Industrial [8]  Incorporating Online Learning
+into Unsupervised Learning.
+Isolation Forest  MicroPython ESP32 – Industrial [7]  Anomaly detection in extreme
+industrial environment.
+Variational AE  Arduino Nano – Household [47]  Detecting mechanical anomalies
+of washing machine. Paying
+significant attention to battery
+life implications.
+With these previous works on Unsupervised Learning through TinyML, a solid foundation is formed
+for an efficient TinyML application that could incorporate Online Learning and applied in different
+settings.
+
+2.5.4 TinyML Incremental and Online Learning
+As discussed in the general Machine Learning for Predictive Maintenance, incremental learning
+techniques is often implemented. It has also been successfully integrated in TinyML applications
+where systems are adaptable in dynamic environments. Pavan, et al. [48] has created the “TyBox”
+toolbox for automating the design and deployment of TinyML models that support incremental
+learning.  Chowdhary  and  Saha  [49]  achieved  an  online  learning  algorithm  that  works  under
+extremely minimal memory usage (Below 8KB).
+
+2.5.5 Supported Hardware
+Informed by the comprehensive comparison in Capogrosso, et al. [50], this research will exclusively
+focus  on  CPU-based  MCUs.  Alternative  architectures  present  drawbacks  that  conflict  with  the
+project's goals, where GPUs has overly expensive cost, FPGAs still have development complexity
+
+23
+and  limited  libraries  impede  rapid  prototyping  and  TPUs  having  specialized  nature  but  lack  of
+developer resources.
+CPU-based MCUs align with the project's emphasis on cost-effectiveness and accessibility due to
+their widespread off-the-shelf availability. The most popular off-the-shelf MCUs according to [50]
+are listed below.
+Table 2: Popular Off-The-Shelf MCUs.
+Device  CPU  Clock  SRAM
+Arduino Nano 33 BLE  ARM Cortex M4  64 MHz  256 KB
+STM32 Family  ARM Cortex M  32 - 550 MHz  2 – 564 KB
+ESP32-based  Xtensa LX6  240 MHz  520 KB
+Raspberry Pi Pico  ARM Cortex M  133 MHz  264 KB
+•  Arduino Nano 33 BLE is suitable for rapid prototyping with wide range of functionalities,
+but it offers a lower price-to-performance ratio.
+•  STM32  Family  has  versatile  range  spans  ultra-low  power  to  high-performance  devices,
+including wireless variants.
+•  ESP32-based MCUs offer the computational capacity necessary for experimentation and
+convenience of built-in Wi-Fi while maintaining a favourable price-to-performance ratio.
+•  Raspberry Pi Pico is a budget-friendly option having slightly weaker computing power.
+
+2.5.6 Deployment Framework/Software
+There  are  only  two  commonly  used  deployment  frameworks  currently:  TensorFlow  Lite  Micro
+(TFLM)  and  Edge  Impulse.  The  choice  between  these  frameworks  depends  on  factors  such  as
+flexibility,  documentation,  user  support,  and  the  specific  requirements  of  the  deployment
+environment.
+TensorFlow Lite Micro (TFLM):
+•  Advantages: TFLM is engineered specifically to address the challenges of embedded machine
+learning, providing a low memory footprint and minimal runtime overhead, crucial for devices
+with  limited  computational  resources.  It  employs  an  interpreter-based  approach  which,
+contrary to traditional views, offers high performance for TinyML applications by minimizing
+runtime overhead and maximizing flexibility in deployment scenarios [45
+].
+•  Challenges:  While  highly  efficient,  TFLM's  performance  can  still  be  constrained  by  the
+computational limits of the target devices. The framework requires careful optimization to
+
+24
+maximize efficiency, which can be a barrier for developers without deep embedded systems
+expertise [45
+].
+
+Edge Impulse:
+•  Advantages:  Known  for  its  user-friendly  graphical  interface,  Edge  Impulse  accelerates  the
+prototyping and experimental phases of development. It provides integrated tools for data
+collection  and  signal  processing,  streamlining  the  overall  development  process  for  TinyML
+applications [5
+].
+•  Challenges: This framework offers limited opportunities for custom algorithm development
+and might foster dependence on the platform for essential model updates, which can be a
+drawback for developing bespoke solutions [5].
+
+2.5.7 Over-the-air (OTA) Update
+Over-the-Air (OTA) Update allows IoT devices to improve over time after they are deployed in the
+field. They allow for fixes, improvements, and important security patches to be sent wirelessly. In
+the context of TinyML, OTA updates enable future improvement on the edge devices functionalities
+without the need for physical interaction, which is especially valuable in large-scale or inaccessible
+deployments.
+The  OTA-TinyML  framework  proposed  by  Sudharsan,  et  al.  [51]  addresses  these  challenges  by
+enabling the efficient deployment of TinyML models to a wide array of IoT devices. This framework
+allows devices to fetch and store new models from a cloud server over a secure HTTPS connection,
+and then execute these models locally. This capability not only enhances the functionality of IoT
+devices but also ensures that they can adapt to new data or operational requirements over time
+without manual updates.
+
+2.5.8 Tiny-MLOps
+According to Tamburri [52], Machine-Learning Operations (MLOps) paradigm is one of the growing
+trends. It involves orchestrating various software components for data ingestion, transformation,
+continuous  ML  training/deployment,  and  output  production  as  part  of  an  AI  software  system.
+Sustainability  acts  as  an  overarching  property  that  ties  together  and  enables  the  continuous
+assurance of explainability, fairness, and accountability in MLOps over the long-term.
+
+25
+
+Figure 7: Sustainable MLOps Paradigm Proposed by Tamburri [52].
+Standard MLOps practices are designed for cloud/edge devices with strong computing resources
+running Linux. However, extending MLOps to tiny IoT devices with limited memory/compute poses
+challenges.  To  achieve  the  system  sustainability  on  TinyML,  a  similar  paradigm  is  proposed  by
+Antonini, et al. [53]
+, as Tiny-MLOps. It adapts each phase of the classical MLOps loop (Plan, Create,
+Verify, Package, Release, Configure, Monitor) to fit the resource constraints of far edge IoT devices.
+
+Figure 8: Tiny-MLOps Paradigm Proposed by Antonini, et al. [53].
+
+
+26
+2.6 Summary of Literature Review on TinyML for PdM
+
+Figure 9: Main Factors of Implementing TinyML on PdM.
+Tiny Machine Learning (TinyML) is an emerging field that integrates machine learning capabilities
+into edge devices, most commonly microcontroller units (MCUs) to enable real-time, on-device
+data processing for predictive maintenance (PdM). It shifts some cloud computing workload to the
+edge device which reduces network bandwidth and cloud storage requirements. One single edge
+device can now take care of most tasks in network and processing layer.
+Establish TinyML Applications in PdM
+1.  Unsupervised Learning: TinyML models for anomaly detection and clustering (e.g., Isolation
+Forests [7], Autoencoders [8, 46, 47]) are employed to identify unusual patterns in machinery
+data without requiring labelled datasets.
+2.  System Architecture: TinyML system frameworks and architecture, such as TinyML-Ops [53
+]
+and OTA-TinyML [51] allows the edge device to be systematically managed remotely.
+3.  Incremental Learning: Allowing models to adapt to new data over time, which is crucial for
+maintaining accuracy as machine conditions change. It can be well achieved with a structured
+system architecture above [48, 49
+].
+4.  Deployment  Frameworks:  Tools  like  TFLM  [45]  and  Edge  Impulse  [5]  facilitate  the
+development and deployment of TinyML models, providing a comprehensive ecosystem for
+building and managing TinyML applications.
+CPU-based MCUs will be the research focus as it achieve a balance between robustness and support
+from current TinyML frameworks [50]. The exact hardware model will be selected based on price,
+performance and ease of use.
+While TinyML presents numerous benefits, challenges such as model accuracy and the integration
+of  machine  learning  algorithms  (e.g.,  K-means  clustering  needs  custom  implementation  on  the
+MCUs)  need  to  be  addressed.  Future  research  will  likely  focus  on  enhancing  model  efficiency,
+developing  more  robust  frameworks,  and ensuring  seamless  integration  with  existing  industrial
+systems.
+
+
+27
+Chapter 3:  Methodology
+A thorough analysis of existing research in predictive maintenance utilising Tiny Machine Learning
+(TinyML) has been conducted, providing necessary insights for this project's development of an
+edge-based, simple, and adaptable predictive maintenance system. The system is aimed to provide
+operational advantages through a Knowledge-Based Expert System.
+The research will be focusing on applying the system for Induction Motor Condition Monitoring as
+it is the most common use-case in the industry.
+
+Figure 10: Overview of Main Components and Steps in the Research.
+The proposed system should be able to work under different settings (test rig or industrial) as it was
+aimed as a general architecture for Edge-based Condition Monitoring.
+The system is iteratively evaluated and fine-tune to be more useful for an eventual production
+deployment.
+The system architecture and research will be following the general Industrial AI Workflow.
+
+Figure 11: Industrial AI Workflow.
+
+
+
+28
+3.1 System Architecture
+3.1.1 Hardware Components
+ESP32-based MCUs: After consideration of the project requirement for MCU units to provide the
+necessary  computational  power  and  flexibility  for  implementing  advanced  machine  learning
+algorithms  easily,  ESP32-based  MCUs  have  been  chosen  for  this  project.  While  acknowledging
+potential  concerns  regarding  energy  efficiency,  it  is  still  justified  by  their  balance  between
+computational power, energy efficiency, and user-friendly features such as built-in Wi-Fi. These
+microcontrollers will be configured to interface directly with industrial sensors and processing data
+on-device.
+Accelerometer (as vibration sensor) and Power Meter are used to acquire machine operation data
+from the induction motor.
+
+Figure 12: Hardware Setup Connection for Both Industrial and Test Rig Settings.
+Auxiliary Components:
+ESP32
+•  5V DC Power Supply: To power the ESP32 board.
+•  Noted alternatively ESP32 SIM800L (for cellular data connectivity) can be used for deployment
+where Wi-Fi connection is not available.
+Test Rig Accelerometer (GY-521)
+•  Mounting Adhesive: To securely attach the GY-521 to the motor or nearby surface.
+•  Jumper Wires: Directly connect I2C input to be used by ESP32.
+Industrial Accelerometer (ifm vkv022)
+•  Accelerometer  Mounting  Bracket  with  Screws/Bolts:  To  attach  the  accelerometer  to  the
+motor casing.
+
+29
+•  24V DC Power Supply: To power the ifm vkv022 accelerometer.
+•  4-20mA to Voltage Converter: As ESP32 ADC expect voltage input not current input.
+•  4-20mA Signal Cables.
+Schneider PM1000H Power Meter
+•  110-240V AC Power Supply: As required by the PM1000H.
+•  RS485 to TTL Converter: To interface the MODBUS RS485 communication with the ESP32.
+•  MODBUS Cables.
+
+3.1.2 Software Framework
+The overall Machine Learning Operation will be following the Tiny-MLOps framework to streamline
+the  deployment  and  remote  management  of  machine  learning  models  on  microcontrollers,
+ensuring  that  the  models  remain  efficient  and  scalable.  It  will  be  with  the  addition  of  a  web
+application  backed  with  Knowledge-based  Expert  System  to  enable  extraction  of  condition
+monitoring information.
+
+Figure 13: Proposed Software Stack and Framework.
+
+The  framework  includes  tools  for  data  management  and  communication  to  ensure  smooth
+operation and integration of the edge devices with cloud services.
+MQTT for Data Upload:
+
+30
+•  Eclipse Mosquitto (MQTT Broker): Implemented in a cloud server as broker to direct data to
+databases.
+•  Arduino PubSubClient: To publish sensor data to Mosquitto Broker.
+InfluxDB Serverless Cloud:
+ Time-series database to store and manage the data collected from the
+sensors. It is optimized for handling high write and query loads, making it ideal for IoT applications.
+Firebase Hosting and Authentication: Firebase is used to host the web application and handle user
+authentication. This ensures secure access to the condition monitoring data and facilitates user
+management.
+Firebase Cloud Firestore: A NoSQL cloud database to act as knowledge base for expert system.
+Over-the-Air  (OTA)  Updates:  Will  be  manually  setup  within  the  Linux  Server  to  incrementally
+update model and upload to the edge devices through HTTPS.
+
+3.1.3 Development Tools
+Integrated  Development  Environment  (IDE):  PlatformIO  will  be  used  as  the  primary  IDE  for
+software  development.  It  integrates  seamlessly  with  Visual  Studio  Code,  providing  a  robust
+environment  for  ESP32  programming.  Its  robust  library  management  system,  debugging
+capabilities, and code linting tools will significantly streamline the development process.
+Hardware Connection for Initial Code Upload: USB-to-Serial Interface: The ESP32 microcontrollers
+will be programmed primarily via a USB-to-Serial interface. This interface is crucial for uploading
+compiled code directly from the IDE to the microcontroller.
+TensorFlow Lite Micro (TFLM): TFLM has been selected for machine learning model deployment.
+Its extensive operator support and strong community backing align with the project's requirements.
+Specifically, TFLM's low overhead and efficient utilization of limited hardware resources make it
+ideal for embedded applications.
+Workflow of TFLM on ESP32:
+•  Model Development: Data Collection and Preprocessing: Initially, data will be collected from
+sensors and pre-processed to form a clean dataset. This dataset will be used to train machine
+learning models.
+•  Model  Training:  Using  TensorFlow  or  another  compatible  machine  learning  framework,
+models will be trained on a desktop or cloud environment.
+
+31
+•  Model Conversion (TensorFlow Lite Converter): Once the model is trained, it will be converted
+into the TensorFlow Lite format using the TensorFlow Lite Converter. This step optimizes the
+model to reduce size and improve execution speed without significant loss of accuracy.
+•  Model Deployment: Integration with TFLM: The converted TensorFlow Lite model will then be
+integrated into the TensorFlow Lite Micro (TFLM) framework. TFLM is designed to run machine
+learning models on microcontrollers and other devices with limited computational resources.
+•  Code  Integration:  The  TFLM  model  will  be  integrated  with  the  application  code  written  in
+C/C++ in PlatformIO.
+Other TinyML Algorithms: Some other algorithms that are not supported by TFLM will be directly
+coded through PlatformIO, which might use parameters trained through scikit-learn.
+Model Training Platform: Google Colab is used for quickly testing machine learning scripts and
+parameters.  For  the  streamlined  setup,  a  Linux  server  with  Jupyter  Notebook will  be  setup  for
+automatically code generation.
+
+
+32
+3.2 Data Acquisition and Processing
+The  goal  is  to  ensure  accurate  and  reliable  data  collection  from  sensors,  followed  by  effective
+preprocessing to prepare the data for machine learning models.
+3.2.1 Sensor Data Acquisition
+Sensor  Data  Collection:  Data  will  be  collected  continuously  from  operational  machinery  using
+standard industrial sensors for industrial settings and a lower-end accelerometer for test rig. The
+focus will be on vibration and current, which are critical for condition monitoring.
+•  GY-521 Accelerometer (Test Rig) – The accelerometer captures vibration data across three
+axes  (X,  Y,  Z).  Sampling  rate  and  sensitivity  are  configured  based  on  the  operational
+requirements of the motor.
+•  ifm  vkv022  Accelerometer  (Industrial  Setup)  –  The  accelerometer  provides  continuous
+vibration data on one axis in a 4-20mA current format.
+•  Schneider PM1000H Power Meter - The power meter captures electrical parameters such as
+voltage, current, power factor, and energy consumption.
+3.2.2 Data Preprocessing
+Frequency Domain and Noise Removal: Raw data from sensors will be pre-processed to remove
+noise and the vibration data will also be converted with suitable Fourier Transform for Machine
+Learning on both frequency and time domain.
+•  Vibration Data: Use Fast Fourier Transform (FFT) to convert time-domain data to the frequency
+domain for further analysis. Also, apply a low-pass filter to remove high-frequency noise from
+the accelerometer readings.
+•  Electrical Data: Apply a moving average filter to smooth out short-term fluctuations in the
+power meter readings.
+Feature Extraction:
+•  Time-Domain Features: Calculate statistical features such as mean, standard deviation, root
+mean square (RMS), and peak values from the time-domain data.
+•  Frequency-Domain Features: Extract spectral features such as dominant frequencies, spectral
+bandwidth, and harmonic components from the FFT-transformed data.
+•  Combined Features: Combine relevant time-domain and frequency-domain features to form a
+comprehensive feature set for machine learning models.
+Data Normalization: Normalize the feature values to a standard range (e.g., 0 to 1) to facilitate
+effective training of machine learning models.
+
+33
+3.3 Machine Learning and Knowledge-based Expert System
+This section shows the implementation of ML models and the development of a Knowledge-Based
+Expert System (KBES) to provide actionable insights and enhance decision-making processes.
+3.3.1 Unsupervised Learning
+Initial models will be based on clustering and anomaly detection algorithms that do not require
+labelled data. These models will identify unusual patterns that may indicate machinery faults.
+The three reliable methods as described in Literature Review will all be implemented and evaluated.
+They  can  be  combined  into  single  TinyML  application  which  each  will  have  different  use.  The
+Clustering is important for Multi-class Classification of the motor operation patterns, where the
+Autoencoder  and  Isolation  Forest  are  useful  for  dimensional  reduction,  feature  extraction  and
+anomaly detection.
+
+Figure 14: Tentative Unsupervised Learning Workflow.
+
+Autoencoder for Dimensional Reduction: Autoencoders are used to reduce the dimensionality of
+the sensor data, preserving essential features while eliminating noise and redundancy.
+Implementation Steps:
+1.  Model Training (TensorFlow): Collect a dataset of normal operational data from sensors. Train
+an autoencoder on this dataset, which consists of an encoder that compresses the input data
+into a lower-dimensional space and a decoder that reconstructs the data from this compressed
+representation.
+2.  Model  Conversion:  Convert  the  trained  autoencoder  model  to  TensorFlow  Lite  format  for
+deployment on the ESP32.
+3.  Model Deployment: Deploy the TensorFlow Lite model on the ESP32 using TensorFlow Lite
+Micro (TFLM). Integrate the model with the data acquisition code to process incoming sensor
+data and obtain the compressed representations.
+
+
+34
+Isolation Forest for Anomaly Detection: Isolation Forest is used to detect anomalies in the reduced-
+dimensional data produced by the autoencoder. It isolates anomalies instead of profiling normal
+data points.
+Implementation Steps:
+1.  Model  Training  (scikit-learn):  Train  the  Isolation  Forest  model  on  the  compressed
+representations of normal operational data.
+2.  Model Deployment: Use the trained Isolation Forest model to monitor incoming data in real-
+time on the ESP32. Classify data points as normal or anomalous based on the Isolation Forest
+output.
+
+Isolation Forest for Anomaly Detection: Isolation Forest is used to detect anomalies in the reduced-
+dimensional data produced by the autoencoder. It isolates anomalies instead of profiling normal
+data points.
+Implementation Steps:
+1.  Model  Training  (scikit-learn):  Train  the  Isolation  Forest  model  on  the  compressed
+representations of normal operational data.
+2.  Model Deployment: Use the trained Isolation Forest model to monitor incoming data in real-
+time on the ESP32. Classify data points as normal or anomalous based on the Isolation Forest
+output.
+
+Clustering for Multi-Class Classification: Clustering algorithms, such as K-Means, are used for multi-
+class classification of the motor operation patterns based on the data classified as normal by the
+Isolation Forest.
+Implementation Steps:
+1.  Model  Training  (scikit-learn):  Apply  the  K-Means  clustering  algorithm  to  the  normal
+operational data to identify different operational states or patterns.
+2.  Model  Deployment:  Deploy  the  trained  K-Means  model  on  the  ESP32  to  classify  incoming
+normal  data  points  into  different  operational  states.  Use  these  classifications  to  provide
+detailed insights into the machine's operational patterns.
+
+
+35
+3.3.2 Incremental Learning
+To accommodate changes in machinery behaviour over time, incremental learning models will be
+developed. These models will update themselves as new data is collected, ensuring that the system
+adapts to new conditions without manual intervention.
+With  the  implementation  of  Tiny-MLOps  and  corresponding  settings  when  designing  the
+Unsupervised Learning workflow, an incremental learning framework can be achieved. The details
+will be designed after the unsupervised learning models are proven working.
+
+3.3.3 Knowledge-based Expert System (KBES)
+The KBES provides actionable insights and recommendations based on the machine learning model
+outputs, enhancing the system's usefulness for maintenance personnel.
+Implementation Steps:
+1.  Integration with Firebase: Store historical relationship between model outputs and sensor
+data in Firebase for real-time inference as an expert system. Where operations suggestions
+will be provided by analysing the historical and current data.
+2.  Web Application: Develop a ReactJS web application to display data and insights. Implement
+dashboards for real-time monitoring, anomaly alerts, and maintenance recommendations.
+
+
+
+
+36
+3.4 Project Implementation
+3.4.1 Test Rig Development
+A test rig will be setup that simulates real-world industrial machinery operations, serving as the
+initial testing ground for the predictive maintenance system. It is important to develop each stage
+of  the  whole  architecture  through  a  non-production  setup  and  benchmark  feasibility  of  the
+proposed architecture.
+As the research focus is on the development of software architecture and TinyML models, therefore
+the  test  rig  can  use  a  consumer  type  accelerometer  to  obtain  real-time  data.  A  GY-521
+accelerometer  will  be  used  and  attached  to  a standing  fan.  It  will  be  aimed  to  recognise  the  3
+different moving speed of the fan, although not identical to industrial application, it is enough to
+validate the feasibility of the system.
+
+Figure 15: Test Rig Hardware Setup.
+Hardware & Software:
+1.  ESP32 MCU: Programmed to interface with the sensors and process data.
+2.  GY-521 Accelerometer: Mounted on a standing fan to simulate vibration data.
+3.  PlatformIO: Used as the IDE for programming the ESP32.
+4.  TensorFlow  Lite  Micro  (TFLM):  Deployed  on  the  ESP32  for  running  the  machine  learning
+models.
+Implementation Steps:
+1.  Sensor Data Acquisition: Program the ESP32 to read accelerometer data and transmit it via
+MQTT to the cloud.
+2.  Data Preprocessing: Implement noise filtering using low-pass filters. Extract features such as
+mean, standard deviation, and FFT components from the vibration data.
+3.  Model Deployment: Deploy the Autoencoder model on the ESP32 to perform dimensionality
+reduction. Use the reduced data as input to the Isolation Forest model for anomaly detection.
+Further classify normal data using the K-Means clustering model to identify operational states.
+
+
+37
+3.4.2 Industrial Environment Testing
+The purpose is to validate the system in a real-world industrial setting using standard industrial
+sensors and power meters. Industrial standard Vibration Sensor and Power Meter will be used for
+the industrial type of setup. Additionally, a PCB might be used to ensure reliable connection of the
+final setup.
+Following the common hardware used by industry partner, ifm VKV022 industrial vibration sensor
+will be used for vibration data and a Schneider PM1000H Power Meter will be used for power
+readings.
+
+Figure 16: Industrial Implementation Hardware Setup.
+Hardware:
+1.  ESP32 MCU: For data processing and communication.
+2.  ifm vkv022 Industrial Accelerometer: Mounted on the motor casing to measure vibrations.
+3.  Schneider PM1000H Power Meter: Monitors electrical parameters like voltage and current.
+4.  RS485 to TTL Converter: Interfaces the power meter with the ESP32.
+5.  4-20mA to Voltage Converter: Interfaces the accelerometer output with the ESP32's ADC.
+6.  Power Supplies: 24V DC for the accelerometer and 110-240V AC for the power meter.
+Implementation Steps:
+1.  Sensor Data Acquisition: Acquire data from both sources onto ESP32.
+2.  Data  Preprocessing:  Implement  real-time  noise  filtering,  feature  extraction  and  condition
+recognition on the ESP32. Use MQTT to transmit pre-processed data to the cloud for further
+analysis.
+3.  Model  Deployment:  Deploy  and  test  the  integrated  Autoencoder,  Isolation  Forest,  and  K-
+Means models in the industrial environment. Monitor the system’s performance in detecting
+anomalies and classifying operational states.
+
+
+38
+3.5 Evaluation and Benchmarking
+3.5.1 Performance Metrics
+To  evaluate  the  performance  of  the  predictive  maintenance  system,  the  predicted  machine
+condition  can  be  compared  with  expected  machine  condition  through  human  expertise  or
+intentional setup. The following metrics will be used:
+1.  Precision: This metric measures the accuracy of the positive predictions. It is the ratio of true
+positive results to the total number of positive predictions made.
+2.  Recall: This metric measures the ability of the model to identify all relevant instances. It is the
+ratio of true positive results to the total number of actual positives.
+3.  F1-Score:  This  is  the  harmonic mean of  precision  and  recall,  providing  a  single  metric  that
+balances both concerns.
+The system leaning towards precision or recall will be decided through real-world testing. Normally,
+high precision is preferred over high recall in such system, as false negative can be annoying in a
+Condition Monitoring system.
+
+3.5.2 System Performance Evaluation
+The  performance  of  the  predictive  maintenance  system  will  be  evaluated  in  a  controlled
+environment of the test rig to test its accuracy and reliability:
+1.  Controlled Testing: This metric measures the accuracy of the positive predictions. It is the ratio
+of true positive results to the total number of positive predictions made.
+2.  Data Collection: Continuously collect data from the sensors and evaluate the system's ability
+to detect anomalies and classify operational states.
+3.  Metric Calculation: Calculate precision, recall, F1-score, MAE, and MSE for the collected data
+to quantify the system's performance.
+4.  Iterative Improvement: Based on the results, refine the models and system architecture to
+improve performance.
+
+
+39
+3.5.3 Benchmarking with Virtual Hardware Model
+The TinyML neural network model can be analysed in SIMULINK (Deep Learning Toolbox) through
+fault  data  generated  by  virtual  hardware model  (Simscape  Electrical). This  allows tuning  of  the
+models without complication of generating fault in real world hardware.
+The TinyML neural network model will be analysed in MATLAB's Simulink using the Deep Learning
+Toolbox  through  fault  data  generated  by  a  virtual  hardware  model  (Simscape  Electrical).  This
+approach  allows  tuning  of  the  models  without  the  complications  and  risks  associated  with
+generating faults in real-world hardware. Key steps including:
+1.  Data Generation: Use Simscape Electrical to simulate various fault conditions and generate
+corresponding data.
+2.  Model Analysis: Apply the generated data to the TinyML models to evaluate their performance
+under different simulated conditions.
+3.  Parameter  Tuning:  Adjust  the  model  parameters  to  optimize  performance  based  on  the
+simulation results.
+4.  Validation: Validate the tuned models using a separate set of simulated data to ensure they
+generalize well to unseen conditions.
+Similarly,  the  data  generated  can  also  be  exported  to  test  other  machine  learning  algorithms
+performance outside Simulink, such as in Python for the Isolation Forest and K-Means Clustering.
+
+3.5.4 Field Trials
+After initial testing, the system will undergo field trials in an industrial setting to evaluate its real-
+world effectiveness and adaptability:
+1.  Deployment:  Install  the  system  on  industrial  machinery  and  integrate  it  with  existing
+monitoring infrastructure.
+2.  Live  Data  Collection:  Collect  live  data  over  an  extended  period  to  assess  the  system's
+performance in a real-world environment.
+3.  Performance Monitoring: Continuously monitor the system's performance and adjust models
+as necessary to handle the real-world variability.
+4.  Feedback Loop: Use the feedback from system operators to refine the system and improve
+user interface and functionality.
+
+
+40
+3.5.5 User Feedback
+
+Feedback from system operators will be collected to refine the user interface and functionality of
+the system, ensuring it meets the practical needs of industry professionals:
+1.  Surveys and Interviews: Conduct surveys and interviews with operators to gather detailed
+feedback on system usability and performance.
+2.  User  Interface  Adjustments:  Make  necessary  adjustments  to  the  web  application  and
+dashboard based on the feedback.
+3.  Functional Enhancements: Implement additional features or improve existing ones based on
+user suggestions to enhance the system's utility and ease of use.
+
+3.5.6 Future Improvements
+Based on the evaluation and benchmarking results, future improvements will be planned, including:
+1.  Scalability Testing: Ensure the system can handle larger datasets and more complex scenarios.
+2.  Extended Field Trials: Conduct longer-term field trials to validate the system's reliability and
+effectiveness over time.
+3.  Advanced  Features:  Develop  and  integrate  advanced  features  such  as  real-time  alerts,
+predictive maintenance scheduling, and detailed analytics.
+
+
+References
+[1]  S.  Khin  and  D.  M.  H.  Kee,  "Factors  influencing  Industry  4.0  adoption,"  Journal  of
+Manufacturing Technology Management, vol. 33, no. 3, pp. 448-467, 2022.
+[2]  T. Zonta, C. A. Da Costa, R. da Rosa Righi, M. J. de Lima, E. S. da Trindade, and G. P. Li,
+"Predictive maintenance in the Industry 4.0: A systematic literature review," Computers &
+Industrial Engineering, vol. 150, p. 106889, 2020.
+[3]  A. Busse, J. Metternich, and E. Abele, "Evaluating the benefits of predictive maintenance in
+production:  A  holistic  approach  for  cost-benefit-analysis,"  in  Advances  in  Production
+Research:  Proceedings  of  the  8th  Congress  of  the  German  Academic  Association  for
+Production Technology (WGP), Aachen, November 19-20, 2018 8, 2019: Springer, pp. 690-
+704.
+[4]  J.  Wang,  L.  Zhang,  L.  Duan,  and  R.  X.  Gao,  "A  new  paradigm  of  cloud-based  predictive
+maintenance for intelligent manufacturing," Journal of Intelligent Manufacturing, vol. 28,
+pp. 1125-1137, 2017.
+[5]  V. J. Reddi and B. Murmann, "Special Issue on TinyML," in IEEE Micro, Micro, IEEE vol. 43,
+ed: IEEE, 2023, pp. 7-10.
+[6]  P. Andrade et al., "An Unsupervised TinyML Approach Applied for Pavement Anomalies
+Detection  Under  the  Internet  of  Intelligent  Vehicles,"  presented  at  the  2021  IEEE
+International Workshop on Metrology for Industry 4.0 & IoT (MetroInd4.0&IoT), 2021.
+[7]  A. Mattia, P. Miguel, V. Massimo, and A. Fabio, "An Adaptable and Unsupervised TinyML
+Anomaly Detection System for Extreme Industrial Environments," (in English), Sensors, vol.
+23, pp. 2344-2344, 2023, doi: 10.3390/s23042344.
+[8]  H.  Ren,  D.  Anicic,  and  T.  A.  Runkler,  "TinyOL:  TinyML  with  Online-Learning  on
+Microcontrollers,"  in  2021  International  Joint  Conference  on  Neural  Networks  (IJCNN),
+2021: IEEE, pp. 1-8, doi: 10.1109/IJCNN52387.2021.9533927.
+[9]  S. Mittal, M. A. Khan, D. Romero, and T. Wuest, "A critical review of smart manufacturing
+&  Industry  4.0  maturity  models:  Implications  for  small  and  medium-sized  enterprises
+(SMEs)," Journal of Manufacturing Systems, vol. 49, pp. 194-214, 2018/10/01/ 2018.
+[10]  R.  C.  Santos  and  J.  L.  Martinho,  "An  Industry  4.0  maturity  model  proposal,"  Journal  of
+Manufacturing Technology Management, vol. 31, no. 5, pp. 1023-1043, 2020.
+[11]  S. Shah, S. H. Hussain Madni, S. Z. B. M. Hashim, J. Ali, and M. Faheem, "Factors influencing
+the adoption of industrial internet of things for the manufacturing and production small
+and  medium  enterprises  in  developing  countries,"  IET  Collaborative  Intelligent
+Manufacturing, vol. 6, no. 1, p. e12093, 2024.
+[12]  M.  S.  Farooq  et  al.,  "A  Survey  on  the  Role  of  Industrial  IoT  in  Manufacturing  for
+Implementation of Smart Industry," (in eng), Sensors (14248220), vol. 23, no. 21, p. 8958,
+2023, doi: 10.3390/s23218958.
+[13]  M.  Achouch  et  al.,  "On  predictive  maintenance  in  industry  4.0:  Overview,  models,  and
+challenges," Applied Sciences, vol. 12, no. 16, p. 8081, 2022.
+[14]  M. S. Moiz et al., "Health monitoring of three-phase induction motor using current and
+vibration signature analysis," in 2019 International Conference on Robotics and Automation
+in Industry (ICRAI), 2019: IEEE, pp. 1-4.
+[15]  P. Zhang, Y. Du, T. G. Habetler, and B. Lu, "A survey of condition monitoring and protection
+methods  for  medium-voltage  induction  motors,"  IEEE  Transactions  on  Industry
+Applications, vol. 47, no. 1, pp. 34-46, 2010.
+[16]  M. Kazmi, M. T. Shoaib, A. Aziz, H. R. Khan, and S. A. Qazi, "An Efficient IIoT-Based Smart
+Sensor Node for Predictive Maintenance of Induction Motors," Computer Systems Science
+& Engineering, vol. 47, no. 1, 2023.
+
+61
+[17]  K. Mykoniatis, "A real-time condition monitoring and maintenance management system for
+low voltage industrial motors using internet-of-things," Procedia Manufacturing, vol. 42,
+pp. 450-456, 2020.
+[18]  L. Magadán, F. Suárez, J. Granda, and D. García, "Low-cost industrial IoT system for wireless
+monitoring of electric motors condition," Mobile Networks and Applications, vol. 28, no. 1,
+pp. 97-106, 2023.
+[19]  T. Polonelli, A. Bentivogli, G. Comai, and M. Magno, "Self-sustainable IoT wireless sensor
+node  for  predictive maintenance  on  electric motors,"  in  2022  IEEE Sensors  Applications
+Symposium (SAS), 2022: IEEE, pp. 1-6.
+[20]  C. Murphy, "Why MEMS accelerometers are becoming the designer’s best choice for CbM
+applications," Analog Devices, 2021.
+[21]  B. J. LaMeres and B. J. LaMeres, "Serial Communication in C," Embedded Systems Design
+using the MSP430FR2355 LaunchPad™, pp. 349-451, 2020.
+[22]  Y. Zhang, W. Sun, and Y. Shi, "Architecture and Implementation of Industrial Internet of
+Things (IIoT) Gateway," in 2020 IEEE 2nd International Conference on Civil Aviation Safety
+and Information Technology (ICCASIT, 2020: IEEE, pp. 114-120.
+[23]  K. Kudelina, T. Vaimann, B. Asad, A. Rassõlkin, A. Kallaste, and G. Demidova, "Trends and
+challenges  in  intelligent  condition  monitoring  of  electrical  machines  using  machine
+learning," Applied Sciences, vol. 11, no. 6, p. 2761, 2021.
+[24]  T.  P.  Carvalho,  F.  A.  Soares,  R.  Vita,  R.  d.  P.  Francisco,  J.  P.  Basto,  and  S.  G.  Alcalá,  "A
+systematic  literature  review  of  machine  learning  methods  applied  to  predictive
+maintenance," Computers & Industrial Engineering, vol. 137, p. 106024, 2019.
+[25]  G.  A.  Susto,  A.  Schirru,  S.  Pampuri,  S.  McLoone,  and  A.  Beghi,  "Machine  learning  for
+predictive  maintenance:  A  multiple  classifier  approach,"  IEEE  transactions  on  industrial
+informatics, vol. 11, no. 3, pp. 812-820, 2014.
+[26]  M.  Paolanti,  L.  Romeo,  A.  Felicetti,  A.  Mancini,  E.  Frontoni,  and  J.  Loncarski,  "Machine
+learning approach for predictive maintenance in industry 4.0," in 2018 14th IEEE/ASME
+International Conference on Mechatronic and Embedded Systems and Applications (MESA),
+2018: IEEE, pp. 1-6.
+[27]  T. Berghout, L.-H. Mouss, T. Bentrcia, E. Elbouchikhi, and M. Benbouzid, "A deep supervised
+learning approach for condition-based maintenance of naval propulsion systems," Ocean
+Engineering, vol. 221, p. 108525, 2021.
+[28]  I.  Mallouk,  Y.  Sallez,  and  B.  Abou  El  Majd,  "Machine  learning  approach  for  predictive
+maintenance  of  transport  systems,"  in  2021  Third  International  Conference  on
+Transportation and Smart Technologies (TST), 2021: IEEE, pp. 96-100.
+[29]  N.  Amruthnath  and  T.  Gupta,  "A  research  study  on  unsupervised  machine  learning
+algorithms for early fault detection in predictive maintenance," in 2018 5th international
+conference on industrial engineering and applications (ICIEA), 2018: IEEE, pp. 355-361.
+[30]  K. Sarita, R. Devarapalli, S. Kumar, H. Malik, F. P. Garcia Marquez, and P. Rai, "Principal
+component  analysis  technique  for  early  fault  detection,"  Journal  of  Intelligent  &  Fuzzy
+Systems, vol. 42, no. 2, pp. 861-872, 2022.
+[31]  T.  Simi  and  N.  Resmi,  "A  Robust  Data-Driven  Predictive  Maintenance  Framework  for
+Industrial  Machinery  using  Explainable  Machine  Learning  Techniques,"  in  2023  9th
+International Conference on Smart Computing and Communications (ICSCC), 2023: IEEE, pp.
+138-143.
+[32]  M. I. Ali, N. S. Lai, and R. Abdulla, "Predictive maintenance of rotational machinery using
+deep learning," International Journal of Electrical and Computer Engineering (IJECE), vol.
+14, no. 1, pp. 1112-1121, 2024.
+[33]  J.  Jakubowski,  P.  Stanisz,  S.  Bobek,  and  G.  J.  Nalepa,  "Anomaly  detection  in  asset
+degradation process using variational autoencoder and explanations," Sensors, vol. 22, no.
+1, p. 291, 2021.
+[34]  S. Martin-del-Campo and K. Al-Kahwati, "Unsupervised ranking of outliers in wind turbines
+via isolation forest with dictionary learning," in 5th European Conference of the Prognostics
+
+62
+and Health Management (PHM) Society (PHME 2020), 27-31 July, 2020, Virtual Conference,
+2020: PHM Society.
+[35]  M. Mousavi and A. H. Gandomi, "Unsupervised Condition Monitoring of Structures Using
+VMD and Isolation Forest," in Proceedings of the 13th International Workshop on Structural
+Health Monitoring, 2021: DEStech Publications.
+[36]  S. Zhong, S. Fu, L. Lin, X. Fu, Z. Cui, and R. Wang, "A novel unsupervised anomaly detection
+for gas turbine using isolation forest," in 2019 IEEE International Conference on Prognostics
+and Health Management (ICPHM), 2019: IEEE, pp. 1-6.
+[37]  Y. Zhai, X. Shao, J. Li, and S. Fang, "An unsupervised prediction method for radar transmitter
+degradation fault based on isolation forest," in Journal of Physics: Conference Series, 2021,
+vol. 2010, no. 1: IOP Publishing, p. 012125.
+[38]  J.  Hurtado,  D.  Salvati,  R.  Semola,  M.  Bosio,  and  V.  Lomonaco,  "Continual  learning  for
+predictive maintenance: Overview and challenges," Intelligent Systems with Applications,
+p. 200251, 2023.
+[39]  A.  Sadreddin  and  S.  Sadaoui,  "Incremental  feature  learning  using  constructive  neural
+networks," in 2021 IEEE 33rd International Conference on Tools with Artificial Intelligence
+(ICTAI), 2021: IEEE, pp. 704-708.
+[40]  A. Avi, A. Albanese, and D. Brunelli, "Incremental Online Learning Algorithms Comparison
+for Gesture and Visual Smart Sensors," in 2022 International Joint Conference on Neural
+Networks (IJCNN), Neural Networks (IJCNN), 2022 International Joint Conference on, ed:
+IEEE, 2022, pp. 1-8.
+[41]  D. Batanov, N. Nagarur, and P. Nitikhunkasem, "EXPERT-MM: A knowledge-based system
+for maintenance management," Artificial intelligence in engineering, vol. 8, no. 4, pp. 283-
+291, 1993.
+[42]  A. Sarazin, S. Truptil, A. Montarnal, J. Lamothe, J. Commanay, and L. Sagaspe, "Towards
+model transformation from a CBM model to CEP rules to support predictive maintenance,"
+in MODELSWARS 2020-The 8th International Conference on Model-Driven Engineering and
+Software Development, 2020, vol. 1: SciTePress, pp. 205-215.
+[43]  Q. Cao, C. Zanni-Merk, A. Samet, F. D. B. De Beuvron, and C. Reich, "Using rule quality
+measures for rule base refinement in knowledge-based predictive maintenance systems,"
+Cybernetics and Systems, vol. 51, no. 2, pp. 161-176, 2020.
+[44]  N. Schizas, A. Karras, C. Karras, and S. Sioutas, "TinyML for ultra-low power AI and large
+scale IoT deployments: A systematic review," Future Internet, vol. 14, no. 12, p. 363, 2022.
+[45]  R. David et al., "TensorFlow Lite Micro: Embedded Machine Learning on TinyML Systems,"
+ed: arXiv, 2020.
+[46]  S.  Abbasi,  M.  Famouri,  M.  J.  Shafiee,  and  A.  Wong,  "OutlierNets:  Highly  compact  deep
+autoencoder  network  architectures  for on-device  acoustic  anomaly  detection,"  Sensors,
+vol. 21, no. 14, p. 4805, 2021.
+[47]  M. Lord and A. Kaplan, "Mechanical anomaly detection on an embedded microcontroller,"
+in 2021 International Conference on Computational Science and Computational Intelligence
+(CSCI), 2021: IEEE, pp. 562-568.
+[48]  M. Pavan, E. Ostrovan, A. Caltabiano, and M. Roveri, "TyBox: an automatic design and code-
+generation toolbox for TinyML incremental on-device learning," in ACM Transactions on
+Embedded Computing Systems, ed. New York, NY: ACM, 2023.
+[49]  M. Chowdhary and S. S. Saha, "On-Sensor Online Learning and Classification Under 8 KB
+Memory,"  in  2023  26th  International  Conference  on  Information  Fusion  (FUSION),
+Information  Fusion  (FUSION),  2023  26th  International  Conference  on,  ed:  International
+Society of Information Fusion, 2023, pp. 1-8.
+[50]  L. Capogrosso, F. Cunico, D. S. Cheng, F. Fummi, and M. Cristani, "A Machine Learning-
+Oriented Survey on Tiny Machine Learning," in IEEE Access, Access, IEEE vol. 12, ed: IEEE,
+2024, pp. 23406-23426.
+
+63
+[51]  B.  Sudharsan  et  al.,  "OTA-TinyML:  Over  the  Air  Deployment  of  TinyML  Models  and
+Execution  on  IoT  Devices,"  in  IEEE  Internet  Computing,  Internet  Computing,  IEEE,  IEEE
+Internet Comput. vol. 26, ed: IEEE, 2022, pp. 69-78.
+[52]  D. A. Tamburri, "Sustainable MLOps: Trends and Challenges," presented at the 2020 22nd
+International  Symposium on  Symbolic  and  Numeric Algorithms  for  Scientific  Computing
+(SYNASC), 2020.
+[53]  M.  Antonini,  M. Pincheira,  M.  Vecchio,  and  F.  Antonelli,  "Tiny-MLOps:  a  framework  for
+orchestrating ML applications at the far edge of IoT systems," presented at the 2022 IEEE
+International Conference on Evolving and Adaptive Intelligent Systems (EAIS), 2022.
+
