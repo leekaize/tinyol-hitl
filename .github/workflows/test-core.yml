@@ -46,10 +46,10 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
-    - name: Setup Arduino CLI
+    - name: Install Arduino CLI
       run: |
         curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh
-        echo "$HOME/bin" >> $GITHUB_PATH
+        export PATH=$PATH:$HOME/bin
 
     - name: Install ESP32 core
       run: |
