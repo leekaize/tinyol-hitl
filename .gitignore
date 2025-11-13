@@ -52,6 +52,6 @@ docs/paper/build/
 *.tex-
 
 # CWRU dataset
-datasets/cwru/binary/
-datasets/cwru/features/
-datasets/cwru/raw/
+data/datasets/cwru/binary/
+data/datasets/cwru/features/
+data/datasets/cwru/raw/
