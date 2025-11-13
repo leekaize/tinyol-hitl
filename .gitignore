@@ -47,6 +47,9 @@ docs/paper/build/
 *.lof
 *.lot
 
+# Generated paper
+docs/paper/paper.pdf
+
 # Pandoc temporary files
 *.pdf-
 *.tex-
