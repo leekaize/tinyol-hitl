@@ -46,6 +46,7 @@ docs/paper/build/
 *.toc
 *.lof
 *.lot
+docs/paper/IEEEtran.cls
 
 # Generated paper
 docs/paper/paper.pdf
