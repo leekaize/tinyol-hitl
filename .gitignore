@@ -50,3 +50,8 @@ docs/paper/build/
 # Pandoc temporary files
 *.pdf-
 *.tex-
+
+# CWRU dataset
+datasets/cwru/binary/
+datasets/cwru/features/
+datasets/cwru/raw/

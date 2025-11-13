@@ -139,7 +139,7 @@ Implementation split:
 \subsection{Industrial Integration: MQTT}
 
 Topic schema:
-\begin{lstlisting}[language=bash]
+\begin{lstlisting}[language=bash,numbers=none]
 sensor/{device_id}/data        # Features (QoS 0)
 sensor/{device_id}/cluster     # Assigned cluster (QoS 0)
 sensor/{device_id}/correction  # Human labels (QoS 1)
@@ -168,7 +168,7 @@ Conversion pipeline:
 \end{enumerate}
 
 Binary format header (16 bytes):
-\begin{lstlisting}[language=C]
+\begin{lstlisting}[language=C,numbers=none]
 struct dataset_header {
     uint32_t magic;      // 0x4B4D4541 ("KMEA")
     uint16_t num_samples;
