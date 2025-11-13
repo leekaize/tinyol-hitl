@@ -1,10 +1,11 @@
 /**
  * @file test_hitl.c
- * @brief Tests for human-in-the-loop correction
+ * @brief Tests for human-in-the-loop label corrections
  */
 
 #include <stdio.h>
 #include <math.h>
+#include <string.h>
 #include "../streaming_kmeans.h"
 
 #define TEST(name) printf("Running %s... ", #name); fflush(stdout);
@@ -15,32 +16,37 @@ int test_correction_basic() {
     TEST(correction_basic);
 
     kmeans_model_t model;
-    kmeans_init(&model, 2, 2, 0.3f);
+    kmeans_init(&model, 2, 0.3f);
 
-    // Train two clusters
-    fixed_t p1[2] = {FLOAT_TO_FIXED(1.0f), FLOAT_TO_FIXED(1.0f)};
-    fixed_t p2[2] = {FLOAT_TO_FIXED(-1.0f), FLOAT_TO_FIXED(-1.0f)};
+    // Add second cluster
+    fixed_t fault[2] = {FLOAT_TO_FIXED(2.0f), FLOAT_TO_FIXED(2.0f)};
+    kmeans_add_cluster(&model, fault, "fault_a");
 
+    // Train both clusters
     for (int i = 0; i < 10; i++) {
+        fixed_t p0[2] = {FLOAT_TO_FIXED(0.1f), FLOAT_TO_FIXED(0.1f)};
+        fixed_t p1[2] = {FLOAT_TO_FIXED(1.9f), FLOAT_TO_FIXED(1.9f)};
+        kmeans_update(&model, p0);
         kmeans_update(&model, p1);
-        kmeans_update(&model, p2);
     }
 
-    // Point near cluster 0, but human says it's cluster 1
-    fixed_t correction_point[2] = {FLOAT_TO_FIXED(0.9f), FLOAT_TO_FIXED(0.9f)};
-    uint8_t assigned = kmeans_predict(&model, correction_point);
+    // Point near cluster 0, but operator says it's cluster 1
+    fixed_t correction[2] = {FLOAT_TO_FIXED(0.2f), FLOAT_TO_FIXED(0.2f)};
+    uint8_t assigned = kmeans_predict(&model, correction);
+
+    if (assigned != 0) FAIL("point should be near cluster 0");
 
     // Apply correction
-    if (!kmeans_correct(&model, correction_point, assigned, 1)) {
+    if (!kmeans_correct(&model, correction, 0, 1)) {
         FAIL("correction failed");
     }
 
-    // Verify cluster 1 centroid moved toward correction_point
-    fixed_t new_centroid[2];
-    kmeans_get_centroid(&model, 1, new_centroid);
-    float x = FIXED_TO_FLOAT(new_centroid[0]);
+    // Verify cluster 1 moved toward correction point
+    fixed_t c1[2];
+    kmeans_get_centroid(&model, 1, c1);
+    float x = FIXED_TO_FLOAT(c1[0]);
 
-    if (x < -0.9f || x > -0.5f) FAIL("centroid didn't move");
+    if (x > 1.8f || x < 1.0f) FAIL("centroid didn't move enough");
 
     PASS();
     return 0;
@@ -50,7 +56,7 @@ int test_correction_noop() {
     TEST(correction_noop);
 
     kmeans_model_t model;
-    kmeans_init(&model, 2, 2, 0.3f);
+    kmeans_init(&model, 2, 0.3f);
 
     fixed_t point[2] = {FLOAT_TO_FIXED(1.0f), FLOAT_TO_FIXED(1.0f)};
     kmeans_update(&model, point);
@@ -74,7 +80,7 @@ int test_correction_invalid() {
     TEST(correction_invalid);
 
     kmeans_model_t model;
-    kmeans_init(&model, 2, 2, 0.3f);
+    kmeans_init(&model, 2, 0.3f);
 
     fixed_t point[2] = {FLOAT_TO_FIXED(1.0f), FLOAT_TO_FIXED(1.0f)};
 
@@ -90,68 +96,110 @@ int test_correction_count_tracking() {
     TEST(correction_count_tracking);
 
     kmeans_model_t model;
-    kmeans_init(&model, 2, 2, 0.3f);
+    kmeans_init(&model, 2, 0.3f);
 
-    fixed_t p1[2] = {FLOAT_TO_FIXED(1.0f), FLOAT_TO_FIXED(1.0f)};
+    // Add second cluster
+    fixed_t seed[2] = {FLOAT_TO_FIXED(2.0f), FLOAT_TO_FIXED(2.0f)};
+    kmeans_add_cluster(&model, seed, "fault_a");
 
-    // Add points and track which cluster they go to
-    uint8_t assigned_cluster = 0;
+    // Add points to cluster 0
+    fixed_t p[2] = {FLOAT_TO_FIXED(0.1f), FLOAT_TO_FIXED(0.1f)};
     for (int i = 0; i < 5; i++) {
-        assigned_cluster = kmeans_update(&model, p1);
+        kmeans_update(&model, p);
     }
 
-    uint32_t count_before = model.clusters[assigned_cluster].count;
-    uint32_t other_cluster = (assigned_cluster == 0) ? 1 : 0;
-    uint32_t other_count_before = model.clusters[other_cluster].count;
+    uint32_t count_before = model.clusters[0].count;
 
-    // Correct from assigned cluster to other cluster
-    kmeans_correct(&model, p1, assigned_cluster, other_cluster);
+    // Correct one point from cluster 0 to cluster 1
+    kmeans_correct(&model, p, 0, 1);
 
-    if (model.clusters[assigned_cluster].count != count_before - 1) FAIL("old cluster count wrong");
-    if (model.clusters[other_cluster].count != other_count_before + 1) FAIL("new cluster count wrong");
+    uint32_t count_after = model.clusters[0].count;
+
+    if (count_after != count_before - 1) FAIL("count not decremented");
+    if (model.clusters[1].count != 2) FAIL("new cluster count wrong");
 
     PASS();
     return 0;
 }
 
-int test_correction_multiple() {
-    TEST(correction_multiple);
+int test_label_retrieval() {
+    TEST(label_retrieval);
 
     kmeans_model_t model;
-    kmeans_init(&model, 3, 2, 0.2f);
+    kmeans_init(&model, 3, 0.2f);
 
-    // Create three clusters
-    fixed_t p1[2] = {FLOAT_TO_FIXED(1.0f), FLOAT_TO_FIXED(0.0f)};
-    fixed_t p2[2] = {FLOAT_TO_FIXED(0.0f), FLOAT_TO_FIXED(1.0f)};
-    fixed_t p3[2] = {FLOAT_TO_FIXED(-1.0f), FLOAT_TO_FIXED(0.0f)};
+    // Add clusters with labels
+    fixed_t p1[3] = {FLOAT_TO_FIXED(1.0f), FLOAT_TO_FIXED(1.0f), FLOAT_TO_FIXED(1.0f)};
+    fixed_t p2[3] = {FLOAT_TO_FIXED(2.0f), FLOAT_TO_FIXED(2.0f), FLOAT_TO_FIXED(2.0f)};
 
-    for (int i = 0; i < 10; i++) {
-        kmeans_update(&model, p1);
-        kmeans_update(&model, p2);
-        kmeans_update(&model, p3);
-    }
+    kmeans_add_cluster(&model, p1, "ball_fault");
+    kmeans_add_cluster(&model, p2, "inner_race_fault");
 
-    // Apply multiple corrections
-    kmeans_correct(&model, p1, 0, 2);
-    kmeans_correct(&model, p1, 0, 2);
-    kmeans_correct(&model, p2, 1, 2);
+    // Verify labels
+    char label0[MAX_LABEL_LENGTH];
+    char label1[MAX_LABEL_LENGTH];
+    char label2[MAX_LABEL_LENGTH];
 
-    // Cluster 2 should have 3 corrections
-    if (model.clusters[2].count < 3) FAIL("corrections not accumulated");
+    kmeans_get_label(&model, 0, label0);
+    kmeans_get_label(&model, 1, label1);
+    kmeans_get_label(&model, 2, label2);
+
+    if (strcmp(label0, "normal") != 0) FAIL("cluster 0 label wrong");
+    if (strcmp(label1, "ball_fault") != 0) FAIL("cluster 1 label wrong");
+    if (strcmp(label2, "inner_race_fault") != 0) FAIL("cluster 2 label wrong");
+
+    PASS();
+    return 0;
+}
+
+int test_correction_with_labels() {
+    TEST(correction_with_labels);
+
+    kmeans_model_t model;
+    kmeans_init(&model, 2, 0.2f);
+
+    // Add fault clusters
+    fixed_t ball[2] = {FLOAT_TO_FIXED(1.0f), FLOAT_TO_FIXED(1.0f)};
+    fixed_t inner[2] = {FLOAT_TO_FIXED(2.0f), FLOAT_TO_FIXED(2.0f)};
+
+    kmeans_add_cluster(&model, ball, "ball_fault");
+    kmeans_add_cluster(&model, inner, "inner_race_fault");
+
+    // Sample assigned to ball but is actually inner race
+    fixed_t misclassified[2] = {FLOAT_TO_FIXED(1.1f), FLOAT_TO_FIXED(1.1f)};
+    uint8_t assigned = kmeans_predict(&model, misclassified);
+
+    if (assigned != 1) FAIL("should predict ball_fault");
+
+    // Operator corrects: this is inner race
+    kmeans_correct(&model, misclassified, 1, 2);
+
+    // Verify inner race centroid moved
+    fixed_t c_inner[2];
+    kmeans_get_centroid(&model, 2, c_inner);
+    float x = FIXED_TO_FLOAT(c_inner[0]);
+
+    if (x > 2.0f) FAIL("centroid didn't attract");
 
     PASS();
     return 0;
 }
 
 int main() {
-    printf("=== HITL Correction Tests ===\n");
+    int failures = 0;
 
-    if (test_correction_basic()) return 1;
-    if (test_correction_noop()) return 1;
-    if (test_correction_invalid()) return 1;
-    if (test_correction_count_tracking()) return 1;
-    if (test_correction_multiple()) return 1;
+    failures += test_correction_basic();
+    failures += test_correction_noop();
+    failures += test_correction_invalid();
+    failures += test_correction_count_tracking();
+    failures += test_label_retrieval();
+    failures += test_correction_with_labels();
 
-    printf("\n=== All HITL Tests Passed (5/5) ===\n");
-    return 0;
+    if (failures == 0) {
+        printf("\n=== All HITL Tests Passed ===\n");
+    } else {
+        printf("\n=== %d HITL Tests Failed ===\n", failures);
+    }
+
+    return failures;
 }

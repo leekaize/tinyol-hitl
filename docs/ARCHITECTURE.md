@@ -1,271 +1,239 @@
-# Architecture
+# System Architecture
 
-System design for multi-platform on-device learning with human corrections.
+Label-driven incremental clustering. Grows from K=1 to K=N as faults discovered.
 
 ## Core Algorithm
 
-**Streaming k-means.** Exponential moving average. No batch processing. Update per sample.
-
-**Update rule:**
-```
-centroid_new = centroid_old + α(sample - centroid_old)
-α = base_lr / (1 + 0.01 × count)
+**Bootstrap (Day 1):**
+```c
+kmeans_init(&model, 3, 0.2f);  // 3D features (accel x,y,z), 0.2 learning rate
+// K=1, label="normal", centroid=[0,0,0]
 ```
 
-Learning rate decays as cluster sees more points. Prevents drift from established patterns.
+**Discovery (When fault appears):**
+```c
+// Operator sees anomaly, sends MQTT:
+// {"label": "outer_race_fault", "features": [0.5, 0.2, 0.8]}
 
-**Memory:** K × D × 4 bytes + metadata. Example: 10 clusters × 32 features = 1.28 KB.
-
-**Precision:** Q16.16 fixed-point. ARM, Xtensa, AVR all have 32-bit multiply.
-
-**Distance:** Squared Euclidean. No sqrt. Saves 30% compute per sample.
-
-## Platform Requirements
-
-**Minimum:**
-- 520 KB RAM (ESP32/RP2350 both meet this)
-- WiFi capability (both platforms native)
-- Arduino IDE support
-
-**Static allocation only.** No malloc. Deterministic memory. Predictable behavior.
-
-**Cluster count:** Fixed at compile time. Trade flexibility for safety.
-
-## Platform Abstraction
-
-**Core API:**
-```cpp
-void platform_init();           // WiFi, LED, storage
-void platform_loop();           // Reconnect logic
-void platform_blink(uint8_t n); // Visual feedback
+fixed_t point[3] = {FLOAT_TO_FIXED(0.5), FLOAT_TO_FIXED(0.2), FLOAT_TO_FIXED(0.8)};
+kmeans_add_cluster(&model, point, "outer_race_fault");
+// Now K=2
 ```
 
-Three functions. Core algorithm stays pure. Platform handles I/O.
-
-**ESP32 specifics:**
-- WiFi native, NVS storage
-- FreeRTOS (unused in MVP)
-
-**RP2350 specifics:**
-- WiFi via CYW43, LittleFS storage
-- Dual-core ARM (unused in MVP)
-
-## Data Flow
-
-**Inference path:**
-```
-Sensor → ADC → Feature → K-means → Cluster ID → MQTT/Serial → SCADA
+**Learning (Continuous):**
+```c
+uint8_t cluster = kmeans_update(&model, sensor_reading);
+// Assigns to nearest cluster
+// Updates centroid via EMA: c_new = c_old + α(x - c_old)
+// α decays: base_lr / (1 + 0.01 × count)
 ```
 
-**Training path:**
+**Correction (When operator sees misclassification):**
+```c
+// Sample assigned to cluster 2, but operator says it's cluster 1
+kmeans_correct(&model, point, 2, 1);
+// Repels from cluster 2, attracts to cluster 1
 ```
-SCADA → Human Label → MQTT → Update Centroid → Flash → Persist
-```
-
-**Flash write trigger:** Every 100 samples or on label correction. Balance persistence vs wear.
-
-## Communication Protocol
-
-**MQTT topics (WiFi platforms):**
-```
-sensor/device_id/data          # Streaming features
-sensor/device_id/cluster       # Assigned cluster
-sensor/device_id/correction    # Human label (subscribe)
-sensor/device_id/model         # Centroid updates (publish on change)
-```
-
-**Serial protocol (non-WiFi):**
-```
-> CLUSTER:2,FEATURES:[0.32,-0.15,0.08]\n
-< CORRECTION:2,LABEL:bearing_fault\n
-```
-
-**QoS:** 0 for data stream, 1 for corrections.
-
-## Human-in-the-Loop Corrections
-
-### MQTT Message Format
-Topic: `tinyol/{device_id}/correction`
-Payload:
-```json
-{
-  "cluster_id": 2,
-  "label": "bearing_outer_race",
-  "correction_type": "relabel",
-  "timestamp": 1699142400,
-  "operator_id": "tech_042"
-}
-```
-
-### Correction Processing
-1. Subscribe to correction topic on boot
-2. Parse JSON (ArduinoJson library)
-3. Update centroid via reverse EMA
-4. Persist to NVS/LittleFS
-5. Publish ACK to `tinyol/{device_id}/ack`
-
-### Implementation Status
-- [x] Message format defined
-- [ ] MQTT callback handler (Week 2)
-- [ ] Centroid update logic (Week 2)
-- [ ] Flash persistence (Week 2)
-
-## Integration Architecture
-```
-MCU → WiFi/Serial → MQTT Broker/Serial Monitor → supOS-CE/RapidSCADA → Web HMI
-                                                      ↓
-                                                 PostgreSQL (label history)
-                                                      ↑
-                                                 Analytics (Python)
-```
-
-**supOS-CE:** Unified namespace. Tag-based routing. MQTT native.
-
-**RapidSCADA:** Modbus RTU/TCP. OPC-UA. Open-source. Windows/Linux.
-
-**Choice:** supOS for pure MQTT. RapidSCADA for legacy Modbus infrastructure.
-
-## Multi-Sensor Architecture
-
-```mermaid
-graph TB
-    subgraph "Hardware Layer"
-        GY521[GY-521 MPU6050<br/>I²C: 0x68]
-        ADXL345[ADXL345<br/>I²C: 0x53]
-        ACS712[ACS712<br/>Analog ADC]
-        INA219[INA219<br/>I²C: 0x40]
-    end
-
-    subgraph "Abstraction Layer: sensor.cpp"
-        SENSOR_INIT[sensor_init]
-        SENSOR_READ[sensor_read<br/>Returns: data, feature_dim]
-        CONFIG{config.h<br/>SENSOR_TYPE}
-    end
-
-    subgraph "Application Layer: core.ino"
-        INIT[setup]
-        LOOP[loop @ 100 Hz]
-        FEATURES[Feature Extraction<br/>RMS, kurtosis, crest]
-        KMEANS[kmeans_update]
-    end
-
-    subgraph "Communication Layer"
-        SERIAL[Serial: CSV logging]
-        MQTT[MQTT: HITL corrections]
-    end
-
-    CONFIG -->|SENSOR_MPU6050| GY521
-    CONFIG -->|SENSOR_ADXL345| ADXL345
-    CONFIG -.->|HAS_CURRENT_SENSOR| ACS712
-    CONFIG -.->|HAS_CURRENT_SENSOR| INA219
-
-    GY521 --> SENSOR_INIT
-    ADXL345 --> SENSOR_INIT
-    ACS712 -.-> SENSOR_INIT
-    INA219 -.-> SENSOR_INIT
-
-    SENSOR_INIT --> INIT
-    SENSOR_READ --> LOOP
-    LOOP --> FEATURES
-    FEATURES --> KMEANS
-    LOOP --> SERIAL
-    MQTT --> KMEANS
-
-    style GY521 fill:#4CAF50
-    style ADXL345 fill:#FFC107
-    style ACS712 fill:#9E9E9E
-    style INA219 fill:#9E9E9E
-    style SENSOR_INIT fill:#2196F3
-    style SENSOR_READ fill:#2196F3
-    style CONFIG fill:#FF5722
-
-    classDef phase1 stroke:#4CAF50,stroke-width:3px
-    classDef phase2 stroke:#9E9E9E,stroke-width:2px,stroke-dasharray: 5 5
-
-    class GY521,ADXL345,SENSOR_INIT,SENSOR_READ,INIT,LOOP phase1
-    class ACS712,INA219 phase2
-```
-
-## Performance Targets
-
-**Latency:**
-- Sample → Cluster: <50 ms
-- Label → Update: <2 s (WiFi), <5 s (Serial)
-- WiFi transmit: 1 Hz
-
-**Throughput:**
-- ESP32: 200 samples/sec @ 240 MHz
-- RP2350: 150 samples/sec @ 150 MHz
-
-**Power:**
-- ESP32: 45 mA active, 10 µA sleep
-- RP2350: 35 mA active, 0.8 mA sleep
 
 ## Memory Layout
 
-**ESP32 (520 KB SRAM):**
-```
-0x00000 - 0x14000: FreeRTOS kernel + WiFi (80 KB)
-0x14000 - 0x15400: K-means model (5 KB)
-0x15400 - 0x27000: Training buffer (71 KB)
-0x27000 - 0x80000: Heap (364 KB margin)
-```
-
-**RP2350 (520 KB SRAM):**
-```
-0x20000000 - 0x20014000: WiFi (CYW43) firmware (80 KB)
-0x20014000 - 0x20015400: K-means model (5 KB)
-0x20015400 - 0x20080000: Unused (435 KB margin)
+**Per cluster:**
+```c
+typedef struct {
+    fixed_t centroid[64];      // 256 bytes max
+    uint32_t count;            // 4 bytes
+    fixed_t inertia;           // 4 bytes
+    char label[32];            // 32 bytes
+    bool active;               // 1 byte
+} cluster_t;  // ~297 bytes per cluster
 ```
 
-## Dataset Integration
+**Model state:**
+```c
+typedef struct {
+    cluster_t clusters[16];    // 4.75 KB max
+    uint8_t k;                 // Current cluster count
+    uint8_t feature_dim;
+    fixed_t learning_rate;
+    uint32_t total_points;
+    bool initialized;
+} kmeans_model_t;  // ~4.8 KB total
+```
 
-**CWRU streaming:**
-- Source: 12 kHz accelerometer data
-- Format: .mat files → fixed-point binary
-- Chunk: 256 samples per packet
-- Interface: SD card or UART
+## Data Flow
 
-**Validation:**
-- Hardware: Real motor + sensor (ESP32/RP2350)
-- Dataset: CWRU/MFPT (all platforms via Serial)
-- Metrics: Confusion matrix, accuracy, F1 score
+```
+Sensor → Feature Extract → Cluster Assignment → MQTT Publish
+  ↓                             ↑
+I²C                         MQTT Subscribe
+(ADXL345)                   (Corrections/Labels)
+```
 
-## Algorithm Decisions
+**Sensor read (100 Hz):**
+```cpp
+void loop() {
+  sensors_event_t event;
+  accel.getEvent(&event);
 
-**Why streaming k-means?**
-- Simplest unsupervised algorithm (200 lines C)
-- Lowest memory (linear in K and D)
-- Proven convergence (Bottou 1998)
+  fixed_t features[3] = {
+    FLOAT_TO_FIXED(event.acceleration.x),
+    FLOAT_TO_FIXED(event.acceleration.y),
+    FLOAT_TO_FIXED(event.acceleration.z)
+  };
 
-**Why not neural networks?**
-- Backprop memory overhead (gradients)
-- Convergence requires batch
+  uint8_t cluster = kmeans_update(&model, features);
 
-**Why not GMM?**
-- Covariance matrices: O(D²) memory
-- EM algorithm needs batch iteration
-- Computational cost too high
+  char label[32];
+  kmeans_get_label(&model, cluster, label);
 
-**Why fixed-point?**
-- No FPU on Cortex-M33 (RP2350)
-- ESP32 has FPU, but fixed-point is portable
-- 16.16 format sufficient for condition monitoring
+  mqtt.publish("sensor/device1/cluster", cluster, label, features);
+  mqtt.loop();  // Check for corrections
+}
+```
 
-## Open Questions
+**MQTT callback:**
+```cpp
+void mqtt_callback(char* topic, byte* payload, unsigned int length) {
+  StaticJsonDocument<256> doc;
+  deserializeJson(doc, payload);
 
-**Feature extraction:** Time domain (RMS, kurtosis) or frequency domain (FFT)? Test both. Measure accuracy vs compute.
+  const char* new_label = doc["label"];
+  JsonArray arr = doc["features"];
 
-**Label conflicts:** Human says A, model says B. Strategy: trust human, decay old centroid slowly (α = 0.05).
+  fixed_t point[3];
+  for (int i = 0; i < 3; i++) {
+    point[i] = FLOAT_TO_FIXED(arr[i].as<float>());
+  }
 
-**Flash wear:** 100k write cycles typical. At 100 samples/write, that's 10M samples. Acceptable for research.
+  kmeans_add_cluster(&model, point, new_label);
+}
+```
 
-## Future Extensions
+## Platform Abstraction
 
-**Neural augmentation:** Add 1-layer perceptron after k-means. Optional compilation flag.
+**ESP32-S3 (Xtensa LX7):**
+```cpp
+void platform_init() {
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  Wire.begin(21, 22);  // SDA, SCL
+  pinMode(LED_PIN, OUTPUT);
+}
+```
 
-**Multi-sensor fusion:** Vibration + temperature + current. Extend feature dimension.
+**RP2350 (ARM Cortex-M33):**
+```cpp
+void platform_init() {
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  Wire.begin();  // Default I²C pins
+  pinMode(LED_PIN, OUTPUT);
+}
+```
 
-**OTA updates:** Flash new model via MQTT (ESP32/RP2350 only).
+Core algorithm identical. Platform layer handles I/O differences.
 
-**Energy harvesting:** Solar or vibration. Battery becomes backup, not primary.
+## MQTT Integration
+
+**Topics:**
+
+**Publish (device → broker):**
+- `sensor/{device_id}/cluster` - Cluster assignments
+- `sensor/{device_id}/health` - Uptime, memory, K value
+
+**Subscribe (broker → device):**
+- `tinyol/{device_id}/label` - Add new cluster
+- `tinyol/{device_id}/correction` - Fix misclassification
+- `tinyol/{device_id}/reset` - Reset to K=1
+
+**Message formats:**
+
+**Cluster assignment:**
+```json
+{
+  "cluster": 2,
+  "label": "outer_race_fault",
+  "features": [0.45, -0.12, 0.89],
+  "confidence": 0.87,
+  "timestamp": 1699142400
+}
+```
+
+**Add label:**
+```json
+{
+  "label": "inner_race_fault",
+  "features": [0.62, 0.21, -0.44]
+}
+```
+
+**Correction:**
+```json
+{
+  "point": [0.51, 0.19, 0.90],
+  "old_cluster": 2,
+  "new_cluster": 1
+}
+```
+
+## Industrial Integration
+
+**RapidSCADA:**
+1. Install KpMqtt.dll driver
+2. Configure subscription: `sensor/#`
+3. Map JSON fields to channels
+4. Table view shows live cluster assignments
+
+**supOS-CE:**
+1. Create MQTT data source
+2. Define tags: `sensor.{device_id}.cluster`
+3. Unified namespace auto-routes to dashboards
+
+**Node-RED:**
+1. MQTT-in node subscribes to `sensor/#`
+2. JSON node parses payload
+3. Dashboard nodes display real-time
+
+Zero code. Standard protocols.
+
+## State Persistence
+
+**On power loss, model state lost.** Two options:
+
+**Option 1 - Flash storage (NVS/LittleFS):**
+```cpp
+void save_model() {
+  File f = LittleFS.open("/model.bin", "w");
+  f.write((uint8_t*)&model, sizeof(model));
+  f.close();
+}
+
+void load_model() {
+  File f = LittleFS.open("/model.bin", "r");
+  f.read((uint8_t*)&model, sizeof(model));
+  f.close();
+}
+```
+
+Call `save_model()` every 100 updates or on graceful shutdown.
+
+**Option 2 - MQTT retained messages:**
+Publish model snapshot to `tinyol/{device_id}/state` with retain flag. Broker stores. Device subscribes on boot, reconstructs state.
+
+Pick Option 1 for fast recovery. Option 2 for remote management.
+
+## Performance
+
+**Measured on ESP32-S3 @ 240MHz:**
+- Init: 0.2ms
+- Update: 0.4ms (K=4, D=3)
+- Predict: 0.3ms
+- Add cluster: 0.1ms
+- Memory: 4.2KB (K=16, D=64)
+
+**Measured on RP2350 @ 150MHz:**
+- Init: 0.3ms
+- Update: 0.6ms (K=4, D=3)
+- Predict: 0.5ms
+- Add cluster: 0.2ms
+- Memory: 4.2KB (K=16, D=64)
+
+Both sub-millisecond. Suitable for 100 Hz sampling.

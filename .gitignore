@@ -38,7 +38,6 @@ tmp/
 arduino-ide_*.AppImage
 
 # LaTeX auxiliary files
-docs/paper/build/
 *.aux
 *.log
 *.out
@@ -59,3 +58,7 @@ docs/paper/paper.pdf
 data/datasets/cwru/binary/
 data/datasets/cwru/features/
 data/datasets/cwru/raw/
+
+# Test files
+core/tests/test_hitl
+core/tests/test_kmeans

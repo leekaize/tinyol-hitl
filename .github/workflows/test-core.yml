@@ -1,55 +1,96 @@
-name: Core Algorithm Tests
+name: Core Tests
 
 on:
   push:
-    branches: [ main, develop ]
-    paths:
-      - 'core/**'
-      - '.github/workflows/test-core.yml'
+    branches: [ main, dev ]
   pull_request:
-    branches: [ main, develop ]
-    paths:
-      - 'core/**'
+    branches: [ main ]
 
 jobs:
-  test:
+  test-algorithm:
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v3
 
-    - name: Compile tests
+    - name: Install dependencies
       run: |
-        cd core
-        gcc -o tests/test_kmeans tests/test_kmeans.c streaming_kmeans.c -lm -Wall -Wextra -Werror
+        sudo apt-get update
+        sudo apt-get install -y gcc make
 
-    - name: Compile HITL tests
+    - name: Build and test k-means
       run: |
-        cd core
-        gcc -o tests/test_hitl tests/test_hitl.c streaming_kmeans.c -lm -Wall -Wextra -Werror
+        cd core/tests
+        gcc -o test_kmeans test_kmeans.c ../streaming_kmeans.c -lm -Wall -Werror
+        ./test_kmeans
 
-    - name: Run all tests
+    - name: Build and test HITL
       run: |
-        cd core
-        echo "=== Core Algorithm ==="
-        ./tests/test_kmeans
-        echo ""
-        echo "=== HITL Corrections ==="
-        ./tests/test_hitl
+        cd core/tests
+        gcc -o test_hitl test_hitl.c ../streaming_kmeans.c -lm -Wall -Werror
+        ./test_hitl
 
-    - name: Generate summary
-      if: always()
+    - name: Check memory footprint
+      run: |
+        cd core/tests
+        ./test_kmeans | grep "Model size"
+        SIZE=$(./test_kmeans | grep "Model size" | awk '{print $3}')
+        if [ $SIZE -gt 102400 ]; then
+          echo "ERROR: Model size $SIZE exceeds 100KB limit"
+          exit 1
+        fi
+
+  compile-arduino:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Setup Arduino CLI
+      run: |
+        curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh
+        echo "$HOME/bin" >> $GITHUB_PATH
+
+    - name: Install ESP32 core
+      run: |
+        arduino-cli config init
+        arduino-cli config add board_manager.additional_urls https://espressif.github.io/arduino-esp32/package_esp32_index.json
+        arduino-cli core update-index
+        arduino-cli core install esp32:esp32
+
+    - name: Install RP2350 core
+      run: |
+        arduino-cli config add board_manager.additional_urls https://github.com/earlephilhower/arduino-pico/releases/download/global/package_rp2040_index.json
+        arduino-cli core update-index
+        arduino-cli core install rp2040:rp2040
+
+    - name: Install libraries
+      run: |
+        arduino-cli lib install "PubSubClient"
+        arduino-cli lib install "ArduinoJson"
+        arduino-cli lib install "Adafruit ADXL345"
+        arduino-cli lib install "Adafruit Unified Sensor"
+
+    - name: Compile for ESP32-S3
+      run: |
+        arduino-cli compile --fqbn esp32:esp32:esp32s3 core/core.ino
+
+    - name: Compile for RP2350
+      run: |
+        arduino-cli compile --fqbn rp2040:rp2040:rpipico2 core/core.ino
+
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Check code style
       run: |
         cd core
-        echo "## Test Results" >> $GITHUB_STEP_SUMMARY
-        echo "### Core Algorithm" >> $GITHUB_STEP_SUMMARY
-        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-        ./tests/test_kmeans >> $GITHUB_STEP_SUMMARY 2>&1 || true
-        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "### HITL Corrections" >> $GITHUB_STEP_SUMMARY
-        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-        ./tests/test_hitl >> $GITHUB_STEP_SUMMARY 2>&1 || true
-        echo "\`\`\`" >> $GITHUB_STEP_SUMMARY
-        echo "" >> $GITHUB_STEP_SUMMARY
-        echo "**Binary sizes:** kmeans=$(stat -c%s test_kmeans)B, hitl=$(stat -c%s test_hitl)B" >> $GITHUB_STEP_SUMMARY
+        # Check for tabs (should use spaces)
+        ! grep -r $'\t' *.c *.h
+        # Check for trailing whitespace
+        ! grep -r ' $' *.c *.h
+        # Check line length (<120 chars)
+        ! grep -r '^.\{121,\}$' *.c *.h
