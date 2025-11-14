@@ -36,9 +36,9 @@
 
 **2 sensor types:** MPU6050 + ADXL345 = eliminates sensor-specific artifacts
 
-**3 current sensors:** One per motor phase = detects phase imbalance
+**3 current sensors:** ZMCT103C, One per motor phase = detects phase imbalance
 
-**Critical:** If one MCU/sensor fails, you still have valid data. Research doesn't stop.
+**Critical:** If one MCU/sensor fails, we still have valid data. Research doesn't stop.
 
 ---
 

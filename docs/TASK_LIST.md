@@ -6,7 +6,7 @@
 
 **Goal:** Sensor data visible in SCADA
 
-- [ ] Add sensor to core.ino (GY521 & ADXL345, allow user selection on connected sensors)
+- [ ] Add sensor to core.ino (GY521, ADXL345 & ZMCT103C, allow user selection on connected sensors)
 - [ ] Add MQTT publish (already have MQTTConnector library)
 - [ ] Install RapidSCADA, add MQTT driver
 - [ ] Configure subscription: `sensor/#`
