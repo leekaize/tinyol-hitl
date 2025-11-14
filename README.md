@@ -4,23 +4,23 @@ Label-driven incremental clustering for edge devices. No pre-training. Grows fro
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Platforms](https://img.shields.io/badge/Platforms-ESP32%20%7C%20RP2350-blue.svg)](core/)
-[![Tests](https://github.com/leekaize/tinyol-hitl/actions/workflows/test-core.yml/badge.svg)](https://github.com/YOUR_USERNAME/tinyol-hitl/actions/workflows/test-core.yml)
+[![Tests](https://github.com/leekaize/tinyol-hitl/actions/workflows/test-core.yml/badge.svg)](https://github.com/leekaize/tinyol-hitl/actions/workflows/test-core.yml)
 
 ## Problem
 
-Predictive maintenance stuck at 27% adoption. Three barriers:
-- ML expertise shortage (142-day hiring, $90K-195K salaries)
-- Vendor lock-in ($50-200/device annual fees)
-- Integration complexity (62.5% need protocol conversion)
+Predictive maintenance stuck at 27% adoption. Three barriers tackled through this solution:
+- ML expertise shortage
+- Vendor lock-in
+- Integration complexity
 
 ## Solution
 
 Start with K=1. Operator labels faults as discovered. System grows organically.
 
-**Day 1:** K=1, everything = "normal"
-**Day 5:** Operator sees anomaly → label "outer_race_fault" → K=2
-**Week 2:** Third fault → K=3
-**Month 1:** Fourth fault → K=4
+- **Day 1:** K=1, everything = "normal"
+- **Day 5:** Operator sees anomaly → label "outer_race_fault" → K=2
+- **Week 2:** Third fault → K=3
+- **Month 1:** Fourth fault → K=4
 
 Arduino sketch. Any board (ESP32, RP2350). MQTT to any broker. <100KB RAM.
 
@@ -90,11 +90,11 @@ c_new = c_old + α(x - c_old)
 
 ## Validation
 
-**CWRU dataset:** 1904 samples, 4 classes, streaming @ 115200 baud
-**Hardware:** 0.5 HP motor, ADXL345, ESP32-S3 + RP2350
-**Protocols:** MQTT → RapidSCADA / supOS-CE / Node-RED
+- **CWRU dataset:** 1904 samples, 4 classes, streaming @ 115200 baud
+- **Hardware:** 0.5 HP motor, ADXL345, ESP32-S3 + RP2350
+- **Protocols:** MQTT → RapidSCADA / supOS-CE / Node-RED
 
-Results: [PLACEHOLDER - Week 1]
+Results: [PLACEHOLDER]
 
 ## Supported Platforms
 
@@ -130,18 +130,17 @@ docs/                   # Architecture, task list, paper
 
 ## Use Cases
 
-**Bearing faults:** Ball, inner race, outer race defects
-**Motor health:** Vibration + current monitoring
-**Leak detection:** Pressure transients
-**Tool wear:** CNC spindle vibration
+- **Bearing faults:** Ball, inner race, outer race defects
+- **Motor health:** Vibration + current monitoring
+- **Leak detection:** Pressure transients
+- **Tool wear:** CNC spindle vibration
 
 Any time-series sensor data. System learns patterns incrementally.
 
 ## Integration
 
-**SCADA:** MQTT → RapidSCADA (native driver), supOS-CE (UNS tags), Ignition (MQTT Engine)
-**Historian:** MQTT → Telegraf → InfluxDB / PostgreSQL
-**Analytics:** Python/R subscribe to MQTT, pull data for offline analysis
+**SCADA:** MQTT → supOS-CE (UNS tags) → RapidSCADA (native driver)
+**Historian:** MQTT → supOS-CE → PostgreSQL
 
 No vendor lock-in. Standard protocols.
 
@@ -149,13 +148,13 @@ No vendor lock-in. Standard protocols.
 
 | Component | Cost |
 |-----------|------|
-| ESP32-S3 or RP2350 | $8-12 |
-| ADXL345 sensor | $3-5 |
-| Enclosure (IP65) | $10-15 |
-| Cables + mounting | $5 |
-| **Total** | **$26-37** |
+| ESP32-S3 or RP2350 | RM30 |
+| ADXL345 sensor | RM20 |
+| Enclosure (IP65) | RM20 |
+| Cables + mounting | RM10 |
+| **Total** | **RM80** |
 
-Compare: Commercial gateway ($300-800) + cloud fees ($50-200/month).
+Compare: Commercial gateway (RM300-800) + cloud fees (RM50-200/month).
 
 Breakeven: <2 months. Zero recurring fees.
 
