@@ -91,7 +91,8 @@ c_new = c_old + α(x - c_old)
 ## Validation
 
 - **CWRU dataset:** 1904 samples, 4 classes, streaming @ 115200 baud
-- **Hardware:** 0.5 HP motor, ADXL345, ESP32-S3 + RP2350
+- **Hardware:** 0.5 HP motor, ADXL345 + MPU6050, ESP32 DEVKIT V1 + RP2350, ZMCT103C current sensing
+- **Test method:** Eccentric weight unbalance (non-destructive, repeatable)
 - **Protocols:** MQTT → RapidSCADA / supOS-CE / Node-RED
 
 Results: [PLACEHOLDER]
@@ -100,7 +101,7 @@ Results: [PLACEHOLDER]
 
 | Board | Arch | RAM | Speed | WiFi |
 |-------|------|-----|-------|------|
-| ESP32-S3 | Xtensa LX7 | 512KB | 240MHz | ✓ |
+| ESP32 DEVKIT V1 | Xtensa LX6 | 520KB | 240MHz | ✓ |
 | RP2350 (Pico 2 W) | ARM Cortex-M33 | 520KB | 150MHz | ✓ |
 
 Same code compiles for both. Platform layer handles WiFi/I²C differences.

@@ -6,7 +6,7 @@
 
 **Goal:** Sensor data visible in SCADA
 
-- [ ] Add sensor to core.ino (ADXL345, 50 lines)
+- [ ] Add sensor to core.ino (GY521 & ADXL345, allow user selection on connected sensors)
 - [ ] Add MQTT publish (already have MQTTConnector library)
 - [ ] Install RapidSCADA, add MQTT driver
 - [ ] Configure subscription: `sensor/#`
@@ -33,10 +33,11 @@
 
 **Goal:** Show it works on hardware
 
-- [ ] Wire ADXL345 to motor bearing housing (hot glue mount)
-- [ ] Run motor 5 min @ 1500 RPM (healthy)
-- [ ] Watch RapidSCADA: 1 dominant cluster
-- [ ] Log 300 samples, verify tight clustering
+- [ ] Wire ADXL345 + MPU6050 to motor housing
+- [ ] Wire ZMCT103C to motor phases (L1, L2, L3)
+- [ ] Run motor 5 min @ 1500 RPM (no weights = healthy)
+- [ ] Mount pulley, test eccentric weight attachment
+- [ ] Log baseline: 300 samples, verify tight clustering
 
 **Success check:** Cluster radius <0.3 units, >95% samples in single cluster
 
@@ -47,10 +48,10 @@
 **Goal:** Prove dynamic clustering
 
 **Scenario 1 - Add second cluster:**
-- [ ] Induce outer race fault (damaged bearing if available, else simulate)
-- [ ] Run motor 2 min, see anomalies in SCADA
-- [ ] Publish MQTT label: `{"label":"outer_race_fault","features":[x,y,z]}`
-- [ ] Verify K=2, new samples assigned correctly
+- [ ] Add mild unbalance (50 g·mm)
+- [ ] Run 2 min, see vibration increase in SCADA
+- [ ] Label: `{"label":"mild_unbalance","features":[x,y,z,rms,i1,i2,i3]}`
+- [ ] Verify K=2, new cluster forms
 
 **Scenario 2 - Add third cluster:**
 - [ ] Change speed to 1800 RPM (or different load)

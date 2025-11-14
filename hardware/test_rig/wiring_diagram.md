@@ -13,9 +13,9 @@ AC Source → VFD → Motor (U, V, W phases)
 
 ### ADXL345 Pinout
 
-**ESP32-S3:**
+**DOIT ESP32 DEVKIT V1:**
 ```
-ADXL345          ESP32-S3
+ADXL345          ESP32
 --------         --------
 VCC      →       3.3V
 GND      →       GND
