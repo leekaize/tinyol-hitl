@@ -2,19 +2,17 @@
 
 ## Status: Algorithm ready, integration needed
 
-## Day 1: Wire sensor → MQTT → RapidSCADA
+## Day 1: Wire sensor → MQTT → FUXA SCADA
 
-**Goal:** Sensor data visible in SCADA
+**Goal:** Live cluster assignments in SCADA
 
-- [ ] Add sensor to core.ino (GY521, ADXL345 & ZMCT103C, allow user selection on connected sensors)
-- [ ] Add MQTT publish (already have MQTTConnector library)
-- [ ] Install RapidSCADA, add MQTT driver
+- [x] Add sensor to core.ino (GY521, ADXL345 & ZMCT103C, allow user selection on connected sensors)
+- [x] Add MQTT publish
+- [ ] Install FUXA SCADA, add MQTT driver
 - [ ] Configure subscription: `sensor/#`
 - [ ] Create table view showing cluster ID + timestamp
 
-**Success check:** RapidSCADA table updates every 100ms with live cluster assignments
-
-**Fallback:** If RapidSCADA fails, just use mosquitto_sub terminal output
+**Success check:** FUXA SCADA table updates every 100ms with live cluster assignments
 
 ## Day 2: CWRU baseline validation
 
@@ -112,6 +110,25 @@
 
 ---
 
+## Phase 2: Current Sensing (Post-Paper)
+
+**Goal:** Compare vibration-only vs vibration+current
+
+**Why deferred:**
+- Need baseline accuracy first
+- Paper contribution: dynamic clustering, not feature engineering
+- Current sensing = incremental improvement, not core novelty
+
+**When sensors arrive:**
+- [ ] Wire ZMCT103C to motor phases (L1, L2, L3)
+- [ ] Update feature vector: 3D → 7D
+- [ ] Re-run all experiments
+- [ ] Measure improvement: vibration-only vs combined
+
+**Hypothesis:** Current adds 5-10% accuracy for electrical faults (bearing: minimal gain)
+
+---
+
 ## What Gets Cut if Time Short
 
 **Priority 1 (Must have):**
@@ -129,21 +146,6 @@
 - Multiple fault types → just normal + outer race
 - Power profiling → cut completely
 
-## Current State
-
-**Working:**
-- Streaming k-means algorithm (200 lines C)
-- Platform abstraction (ESP32 + RP2350)
-- CWRU dataset pipeline (1904 samples converted)
-- Unit tests passing in CI
-
-**Not connected:**
-- Sensor → algorithm (need to add ADXL345 to core.ino)
-- Algorithm → MQTT (need to integrate MQTTConnector)
-- MQTT → SCADA (need RapidSCADA config)
-
-**7 days = connect the pieces**
-
 ## Risk Mitigation
 
 **Risk 1 - Hardware failure:**
@@ -160,11 +162,30 @@ Document as "baseline for future HITL", show improvement potential
 
 ## Definition of Done
 
-Paper shows:
-1. ✓ Algorithm works (unit tests + CWRU)
-2. ✓ Dynamic clustering (K grows 1→2→N)
-3. ✓ Cross-platform (code compiles for both)
-4. ✓ Open integration (MQTT demonstrated)
-5. [OPTIONAL] Real hardware validation
+Paper demonstrates:
+1. [x] Algorithm works (tests pass)
+2. [x] Cross-platform (both compile)
+3. [ ] Dynamic clustering (K grows 1→N)
+4. [ ] CWRU validation (accuracy vs literature)
+5. [OPTIONAL] Real hardware
 
-Minimum viable submission: Items 1-4. Item 5 if time permits.
+Minimum: Items 1-4. Item 5 if motor ready.
+
+---
+
+## Current Progress
+
+**Completed:**
+- Streaming k-means (200 lines C)
+- Platform abstraction (ESP32 + RP2040)
+- Feature extraction (RMS, peak, crest)
+- MQTT publish schema
+- Unit tests in CI
+
+**Next 24 hours:**
+- FUXA SCADA endpoint
+- CWRU streaming pipeline
+- Confusion matrix generation
+
+**7 days from now:**
+PDF submitted, code tagged, demo recorded.

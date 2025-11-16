@@ -76,17 +76,22 @@ System creates new cluster. Future similar patterns → assigned to that cluster
 
 ## How It Works
 
-**Streaming k-means with EMA updates:**
+**Feature extraction:**
+- RMS: Overall vibration energy
+- Peak: Maximum amplitude
+- Crest Factor: Peak/RMS ratio (bearing faults spike high)
+
+**Streaming k-means with EMA:**
 ```
 c_new = c_old + α(x - c_old)
 α = base_lr / (1 + 0.01 × count)
 ```
 
-**Memory:** K × D × 4 bytes. Max (K=16, D=64): 4.2KB.
+**Memory:** K × D × 4 bytes. Current (K=16, D=3): 192 bytes.
 
 **Latency:** <1ms per sample. Squared distance (no sqrt).
 
-**Learning:** Adaptive decay stabilizes centroids over time.
+**Phase 2:** Add current sensing → 7D features. Compare accuracy improvement.
 
 ## Validation
 

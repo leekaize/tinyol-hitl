@@ -1,44 +1,58 @@
 # Full System Build
 
-## Complete Parts List (Tracking Table)
+## Complete Parts List (Phase 1)
 
-| # | Item | Qty | Unit Price (RM) | Total (RM) | Got? | Notes |
-|---|------|-----|-----------------|------------|------|-------|
+| # | Item | Qty | Unit (RM) | Total | Got? | Notes |
+|---|------|-----|-----------|-------|------|-------|
 | **MICROCONTROLLERS** |
 | 1 | DOIT ESP32 DEVKIT V1 | 2 | 30 | 60 | ✔ | Primary platform |
-| 2 | RP2350 (Pico 2 W) | 2 | 25 | 50 | ✔ | Cross-platform validation |
+| 2 | RP2040 Pico 2W | 2 | 25 | 50 | ✔ | Cross-platform validation |
 | **VIBRATION SENSORS** |
-| 3 | GY-521 (MPU6050) | 2 | 12 | 24 | ✔ | Sensor A |
-| 4 | ADXL345 breakout | 2 | 20 | 40 | ✘ (Ordered) | Sensor B |
-| **CURRENT MONITORING** |
-| 5 | ZMCT103C CT sensor 5A | 3 | 15 | 45 | ✘ (Ordered) | One per motor phase |
-| 6 | Burden resistor 100Ω 1W | 3 | 2 | 6 | ✔ | For CT output conditioning |
+| 3 | MPU6050 (GY-521) | 2 | 12 | 24 | ✔ | Phase 1 sensor |
+| 4 | ADXL345 breakout | 2 | 20 | 40 | ✘ (Arriving) | Phase 1 backup |
 | **MOTOR SYSTEM** |
-| 7 | 0.5 HP 3-phase motor | 1 | 250 | 250 | ✔ | 1500 RPM, 6203 bearing |
-| 8 | VFD 0.5-1 HP | 1 | 400 | 400 | ✔ | 0-60Hz, 3-phase output |
-| 9 | 3-phase power cable 3m | 1 | 30 | 30 | ✔ | VFD to motor |
-| 10 | Motor mounting plate | 1 | 50 | 50 | ✔ | Or use existing bench |
+| 5 | 0.5 HP 3-phase motor | 1 | 250 | 250 | ✔ | 1500 RPM, 6203 bearing |
+| 6 | VFD 0.5-1 HP | 1 | 400 | 400 | ✔ | 0-60Hz, 3-phase output |
+| 7 | 3-phase power cable 3m | 1 | 30 | 30 | ✔ | VFD to motor |
+| 8 | Motor mounting plate | 1 | 50 | 50 | ✔ | Or use existing bench |
 | **WIRING & CONNECTIONS** |
-| 11 | Breadboard | 3 | 10 | 30 | ✔ | MCU + sensor circuits |
-| 12 | Micro USB cables | 4 | 8 | 32 | ✔ | 2 for MCUs + 2 spares |
-| 13 | Dupont jumper wires pack | 2 | 8 | 16 | ✔ | Male-female, 40pcs each |
-| 14 | 4.7kΩ resistors | 10 | 0.5 | 5 | ✔ | I²C pull-ups |
+| 9 | Breadboard | 3 | 10 | 30 | ✔ | MCU circuits |
+| 10 | Micro USB cables | 4 | 8 | 32 | ✔ | 2 for MCUs + 2 spares |
+| 11 | Dupont jumper wires pack | 2 | 8 | 16 | ✔ | Male-female, 40pcs |
+| 12 | 4.7kΩ resistors | 10 | 0.5 | 5 | ✔ | I²C pull-ups |
 | **MOUNTING** |
-| 15 | Double-sided mounting tape | 1 | 8 | 8 | ✔ | Quick attach |
-| **POWER SUPPLIES** |
-| 16 | 5V 2A USB adapter | 3 | 15 | 45 | ✔ | MCU power (have spares) |
+| 13 | Double-sided tape | 1 | 8 | 8 | ✔ | Quick attach |
+| **POWER** |
+| 14 | 5V 2A USB adapter | 3 | 15 | 45 | ✔ | MCU power |
+
+**Phase 1 Total:** ~1040 RM
 
 ---
 
-## Research-Specific Redundancy Summary
+## Phase 2: Current Sensing (Deferred)
 
-**2 MCU types:** ESP32-S3 (Xtensa) + RP2350 (ARM) = validates architecture portability
+| # | Item | Qty | Unit (RM) | Total | Notes |
+|---|------|-----|-----------|-------|-------|
+| **CURRENT MONITORING** |
+| 15 | ZMCT103C CT sensor 5A | 3 | 15 | 45 | One per phase |
+| 16 | Burden resistor 100Ω 1W | 3 | 2 | 6 | CT output conditioning |
 
-**2 sensor types:** MPU6050 + ADXL345 = eliminates sensor-specific artifacts
+**Phase 2 Total:** +51 RM
 
-**3 current sensors:** ZMCT103C, One per motor phase = detects phase imbalance
+**Why deferred:**
+- Need vibration-only baseline first
+- Paper compares 3D vs 7D features
+- Current sensing adds complexity without proving core algorithm
 
-**Critical:** If one MCU/sensor fails, we still have valid data. Research doesn't stop.
+---
+
+## Research-Specific Redundancy
+
+**2 MCU types:** ESP32 (Xtensa) + RP2040 (ARM) = validates portability
+
+**2 sensor types:** MPU6050 + ADXL345 = eliminates sensor bias
+
+**Critical:** If one MCU/sensor fails, research continues.
 
 ---
 

@@ -62,3 +62,11 @@ data/datasets/cwru/raw/
 # Test files
 core/tests/test_hitl
 core/tests/test_kmeans
+
+# ===== LOCAL CONFIGURATION (NEVER COMMIT) =====
+core/config.h
+**/config.h
+
+# Environment files
+.env.local
+secrets.h
