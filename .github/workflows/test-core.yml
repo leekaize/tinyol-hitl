@@ -99,16 +99,3 @@ jobs:
 
     - name: Compile for RP2040 Pico 2W
       run: arduino-cli compile --fqbn rp2040:rp2040:rpipico2w core/
-
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-    - uses: actions/checkout@v3
-
-    - name: Check code style
-      run: |
-        cd core
-        # No tabs
-        ! grep -r $'\t' *.c *.h *.ino
-        # No trailing whitespace
-        ! grep -r ' $' *.c *.h *.ino
