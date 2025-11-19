@@ -63,6 +63,44 @@ FROZEN → (operator discards) → NORMAL
 - On label: retrain model, clear buffer, resume
 - On discard: clear buffer, resume
 
+### Idle Detection
+
+**Problem:** Alarms trigger during operation, but operators inspect during downtime.
+
+**Solution:** Hold alarm state after motor stops, allowing labeling at convenience.
+
+**Detection criteria:**
+- RMS < 0.5 m/s² (minimal vibration)
+- Current < 0.1 A (if current sensor available)
+- Consecutive 10 samples (1 second @ 10 Hz)
+
+**State transitions:**
+```
+FROZEN + motor running  → operator must respond
+FROZEN + motor stops    → FROZEN_IDLE (hold indefinitely)
+FROZEN_IDLE + label     → NORMAL (resume)
+FROZEN_IDLE + motor on  → FROZEN (back to active alarm)
+```
+
+**Real scenario:**
+1. 2:00 PM - Alarm triggers during production
+2. 5:00 PM - Motor stops for shift change
+3. 5:01 PM - System detects idle → FROZEN_IDLE
+4. 5:30 PM - Operator inspects bearing (motor off)
+5. 6:00 PM - Operator labels fault
+6. Next day - Motor restarts, system resumes monitoring
+
+**Implementation:**
+```c
+void kmeans_update_idle(kmeans_model_t* model,
+                       fixed_t rms,
+                       fixed_t current);
+
+bool kmeans_is_idle(const kmeans_model_t* model);
+```
+
+**Why this matters:** Operators work on schedules, not milliseconds. Physical inspection requires motor shutdown. Alarms must persist across shifts.
+
 ### Outlier Detection
 
 **Method:** Distance-based threshold

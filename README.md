@@ -76,16 +76,16 @@ docker run -d -p 1883:1883 --name mosquitto eclipse-mosquitto
 
 ## How It Works
 
-**Unsupervised learning:**
-Device clusters vibration patterns automatically. No training needed.
+**Unsupervised learning:** Device clusters vibration patterns automatically. No training needed.
 
-**Operator guidance:**
-When outlier detected → alarm freezes → operator inspects physically → labels → device retrains.
+**Operator guidance:** When outlier detected → alarm freezes → operator inspects physically → labels → device retrains.
+
+**Idle detection:** Alarm persists after motor stops. Operator labels during scheduled downtime, not emergency response.
 
 **Feature extraction (3D):**
-- RMS: Overall vibration energy
-- Peak: Maximum amplitude
-- Crest Factor: Peak/RMS ratio (bearing faults spike)
+- **RMS**: Overall vibration energy
+- **Peak**: Maximum amplitude
+- **Crest Factor**: Peak/RMS ratio (bearing faults spike)
 
 **Streaming k-means with EMA:**
 ```
@@ -93,7 +93,13 @@ c_new = c_old + α(x - c_old)
 α = base_lr / (1 + 0.01 × count)
 ```
 
-**Memory:** <1KB model. Sub-millisecond inference.
+**States:**
+```
+NORMAL → outlier → FROZEN → motor stops → FROZEN_IDLE
+FROZEN_IDLE → label → NORMAL (resume monitoring)
+```
+
+**Memory:** <2.5KB model + buffer. Sub-millisecond inference.
 
 ## Validation
 

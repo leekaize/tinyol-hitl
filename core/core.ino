@@ -220,6 +220,7 @@ void publish_summary(bool is_alarm) {
 
   system_state_t state = kmeans_get_state(&model);
   uint16_t buffer_size = kmeans_get_buffer_size(&model);
+  bool is_idle = kmeans_is_idle(&model);
 
   // Flat JSON schema
   JsonDocument doc;
@@ -227,8 +228,9 @@ void publish_summary(bool is_alarm) {
   doc["cluster"] = cluster;
   doc["label"] = label;
   doc["k"] = model.k;
-  doc["alarm_active"] = (state == STATE_FROZEN);
-  doc["frozen"] = (state == STATE_FROZEN);
+  doc["alarm_active"] = (state == STATE_FROZEN || state == STATE_FROZEN_IDLE);
+  doc["frozen"] = (state == STATE_FROZEN || state == STATE_FROZEN_IDLE);
+  doc["idle"] = is_idle;
   doc["sample_count"] = valid_samples;
   doc["rms_avg"] = rms_avg;
   doc["rms_max"] = rms_max;
@@ -342,6 +344,11 @@ void loop() {
   // Extract features
   float features_float[FEATURE_DIM];
   FeatureExtractor::extractInstantaneous(ax, ay, az, features_float);
+
+  // Update idle detection
+  fixed_t rms_fixed = FLOAT_TO_FIXED(features_float[0]);
+  fixed_t current_fixed = 0;  // TODO: Add when current sensors installed
+  kmeans_update_idle(&model, rms_fixed, current_fixed);
 
   // Store in window
   window_samples[window_index][0] = features_float[0];  // rms

@@ -7,6 +7,7 @@
  * - Grows dynamically when operator labels new faults
  * - Outlier detection triggers alarm state
  * - Freeze-on-alarm workflow for operator inspection
+ * - Idle detection holds alarms after motor stops
  * - Memory: K × D × 4 bytes + ring buffer
  * - Precision: Q16.16 fixed-point
  */
@@ -34,10 +35,16 @@ typedef int32_t fixed_t;
 
 // System states
 typedef enum {
-    STATE_NORMAL,   // Normal operation, collecting samples
-    STATE_ALARM,    // Outlier detected, transitioning to freeze
-    STATE_FROZEN    // Waiting for operator action
+    STATE_NORMAL,      // Normal operation, collecting samples
+    STATE_ALARM,       // Outlier detected, transitioning to freeze
+    STATE_FROZEN,      // Waiting for operator action
+    STATE_FROZEN_IDLE  // Motor idle, holding alarm for later inspection
 } system_state_t;
+
+// Idle detection thresholds
+#define IDLE_RMS_THRESHOLD FLOAT_TO_FIXED(0.5f)     // 0.5 m/s²
+#define IDLE_CURRENT_THRESHOLD FLOAT_TO_FIXED(0.1f) // 0.1 A
+#define IDLE_CONSECUTIVE_SAMPLES 10                  // 1 second @ 10 Hz
 
 // Ring buffer for freeze-on-alarm
 typedef struct {
@@ -54,6 +61,7 @@ typedef struct {
     fixed_t inertia;                  // Within-cluster variance
     char label[MAX_LABEL_LENGTH];     // "normal", "ball_fault", etc
     bool active;                      // Is this cluster in use?
+    uint8_t grace_remaining;          // Grace period: skip outlier checks
 } cluster_t;
 
 // Model state
@@ -70,6 +78,11 @@ typedef struct {
     ring_buffer_t buffer;             // Sample buffer for freeze
     fixed_t outlier_threshold;        // Distance threshold (× cluster radius)
     fixed_t last_distance;            // Distance of last sample
+    
+    // Idle detection
+    uint8_t idle_count;               // Consecutive idle samples
+    fixed_t last_rms;                 // Last RMS value
+    fixed_t last_current;             // Last current value (0 if no sensor)
 } kmeans_model_t;
 
 #ifdef __cplusplus
@@ -133,7 +146,7 @@ void kmeans_discard(kmeans_model_t* model);
 /**
  * Get current system state
  * @param model Model to query
- * @return Current state (NORMAL, ALARM, FROZEN)
+ * @return Current state (NORMAL, ALARM, FROZEN, FROZEN_IDLE)
  */
 system_state_t kmeans_get_state(const kmeans_model_t* model);
 
@@ -198,6 +211,22 @@ bool kmeans_correct(kmeans_model_t* model,
  * @param multiplier Threshold as multiple of cluster radius (default: 2.0)
  */
 void kmeans_set_threshold(kmeans_model_t* model, float multiplier);
+
+/**
+ * Update idle detection state
+ * Call after each feature extraction
+ * @param model Model to update
+ * @param rms Current RMS value (vibration energy)
+ * @param current Current value (0 if no sensor)
+ */
+void kmeans_update_idle(kmeans_model_t* model, fixed_t rms, fixed_t current);
+
+/**
+ * Check if motor is currently idle
+ * @param model Model to query
+ * @return true if motor idle (low vibration + low current)
+ */
+bool kmeans_is_idle(const kmeans_model_t* model);
 
 #ifdef __cplusplus
 }

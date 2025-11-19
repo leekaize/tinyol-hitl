@@ -25,6 +25,7 @@ tinyol/{device_id}/discard       # Operator discards (button press)
   "k": 1,
   "alarm_active": false,
   "frozen": false,
+  "idle": false,
   "sample_count": 100,
   "rms_avg": 5.2,
   "rms_max": 6.1,
@@ -46,6 +47,7 @@ tinyol/{device_id}/discard       # Operator discards (button press)
   "k": 2,
   "alarm_active": true,
   "frozen": true,
+  "idle": false,
   "sample_count": 100,
   "rms_avg": 12.3,
   "rms_max": 15.7,
@@ -58,6 +60,37 @@ tinyol/{device_id}/discard       # Operator discards (button press)
 }
 ```
 
+### Idle State (motor stopped, alarm held)
+```json
+{
+  "device_id": "tinyol_device1",
+  "cluster": -1,
+  "label": "unknown",
+  "k": 2,
+  "alarm_active": true,
+  "frozen": true,
+  "idle": true,
+  "sample_count": 100,
+  "rms_avg": 0.3,
+  "rms_max": 0.5,
+  "peak_avg": 0.8,
+  "peak_max": 1.2,
+  "crest_avg": 1.5,
+  "crest_max": 2.0,
+  "buffer_samples": 100,
+  "timestamp": 456789
+}
+```
+
+**Operator workflow:**
+
+- Alarm triggers at 2 PM (motor running)
+- Motor stops at 5 PM for shift change
+- idle: true appears in next summary
+- Operator inspects during downtime (5:30 PM)
+- Labels fault at convenience (6 PM)
+- System resumes next day
+
 **Field descriptions:**
 
 | Field | Type | Description | Normal | Alarm |
@@ -68,6 +101,7 @@ tinyol/{device_id}/discard       # Operator discards (button press)
 | `k` | int | Total clusters | 1 | 2 |
 | `alarm_active` | bool | Alarm triggered | false | true |
 | `frozen` | bool | Buffer frozen | false | true |
+| `idle` | bool | Motor stopped (low vibration) | false | false |
 | `sample_count` | int | Samples in window | 100 | 100 |
 | `rms_avg` | float | Average RMS (m/s²) | 5.2 | 12.3 |
 | `rms_max` | float | Maximum RMS (m/s²) | 6.1 | 15.7 |
@@ -155,6 +189,7 @@ All fields at root level (flat JSON):
 | k | `k` | int | - |
 | alarm_active | `alarm_active` | bool | Red if true |
 | frozen | `frozen` | bool | - |
+| idle | `idle` | bool | Blue if true |
 | rms_avg | `rms_avg` | float | Yellow >10 |
 | rms_max | `rms_max` | float | Red >15 |
 | peak_avg | `peak_avg` | float | Yellow >15 |
