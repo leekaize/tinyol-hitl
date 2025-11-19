@@ -215,7 +215,7 @@ TEST(high_dimensional) {
 }
 
 TEST(memory_footprint) {
-    printf("\n  Model: %zu bytes", sizeof(kmeans_model_t));
+    printf("\n  Model size: %zu bytes", sizeof(kmeans_model_t));
     printf("\n  Cluster: %zu bytes", sizeof(cluster_t));
     printf("\n  Buffer: %zu bytes\n", sizeof(ring_buffer_t));
 
