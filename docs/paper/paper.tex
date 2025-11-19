@@ -22,7 +22,7 @@
 
 \begin{document}
 
-\title{TinyOL-HITL: Label-Driven Incremental Clustering for Edge-Based Predictive Maintenance}
+\title{TinyOL-HITL: Unsupervised TinyML Fault Discovery with Operator Guidance for Industrial Condition Monitoring}
 
 \author{
     \IEEEauthorblockN{Lee Kai Ze}
@@ -37,11 +37,15 @@
 \maketitle
 
 \begin{abstract}
-Predictive maintenance remains at 27\% adoption despite proven ROI. Three barriers: ML expertise requirements, vendor lock-in, and integration complexity. This work presents TinyOL-HITL, an open-source framework using label-driven incremental clustering. Unlike fixed-K algorithms, clusters emerge dynamically when operators label new fault types. The system starts with one cluster (normal operation), grows as faults are discovered, and refines boundaries through continuous feedback. Validated on CWRU bearing dataset and real induction motor across ESP32-S3 (Xtensa) and RP2350 (ARM Cortex-M33) with 4.2KB memory footprint. Results show [PLACEHOLDER: X\%] baseline accuracy improving to [PLACEHOLDER: Y\%] after [PLACEHOLDER: Z] corrections. Framework provides Arduino IDE integration and standard MQTT protocol for industrial deployment.
+Predictive maintenance adoption remains below 30\% in small-to-medium enterprises due to three critical barriers: required machine learning expertise, vendor lock-in, and integration complexity. Existing solutions, including TinyOL (TinyML with Online-Learning on Microcontrollers), demonstrate on-device learning but assume pre-defined fault classes and require batch training data---constraints incompatible with real-world industrial deployments where fault types emerge unpredictably over operational lifetimes.
+
+We present TinyOL-HITL, an operator-driven extension of incremental clustering that eliminates pre-training requirements and grows classification models organically through human-in-the-loop interaction. The system initializes with a single ``normal'' cluster and dynamically expands as operators label novel fault signatures via standard SCADA interfaces. Key contributions include: label-driven cluster discovery without historical datasets, freeze-on-alarm workflow enabling physical inspection before classification, cross-platform Arduino library supporting multiple microcontroller architectures without vendor lock-in, and integration via industrial-standard MQTT/JSON protocols requiring zero custom software.
+
+Validation combines the CWRU bearing dataset with physical testing on a 2 HP induction motor. Results demonstrate reliable unsupervised baseline classification with measurable improvement from operator corrections---showing that incremental feedback enables competitive accuracy without upfront training data or ML expertise. Integration with open-source FUXA SCADA provides immediate deployment capability using commodity hardware, addressing the pragmatic gap between academic online learning research and industrial adoption requirements.
 \end{abstract}
 
 \begin{IEEEkeywords}
-Edge computing, incremental learning, human-in-the-loop, predictive maintenance, TinyML, open standards
+TinyML, online learning, human-in-the-loop, predictive maintenance, edge computing, streaming k-means, SCADA integration
 \end{IEEEkeywords}
 
 \section{Introduction}

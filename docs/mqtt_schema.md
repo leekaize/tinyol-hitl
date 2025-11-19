@@ -1,87 +1,82 @@
 # MQTT JSON Schema
 
-Reference for SCADA integration and operator commands.
+Flat JSON for SCADA compatibility. No nested objects.
 
 ## Topic Structure
 
 ```
-sensor/{device_id}/data          # Device publishes here (10 Hz)
-tinyol/{device_id}/label         # Operator sends labels here
+sensor/{device_id}/data          # Summary (every 10s)
+tinyol/{device_id}/label         # Operator labels (button press)
+tinyol/{device_id}/discard       # Operator discards (button press)
 ```
 
 ---
 
 ## Data Message (Device → SCADA)
 
-**Published:** Every 100ms (10 Hz)
+**Published:** Every 10 seconds (summary of 100 samples)
 
+### Normal Operation
 ```json
 {
   "device_id": "tinyol_device1",
   "cluster": 0,
   "label": "normal",
   "k": 1,
-  "schema_version": 1,
-  "timestamp": 123456,
-  "features": [5.65, 9.78, 1.73],
-  "raw": {"ax": 0.12, "ay": -0.05, "az": 9.78}
+  "alarm_active": false,
+  "frozen": false,
+  "sample_count": 100,
+  "rms_avg": 5.2,
+  "rms_max": 6.1,
+  "peak_avg": 9.1,
+  "peak_max": 11.2,
+  "crest_avg": 1.75,
+  "crest_max": 2.1,
+  "buffer_samples": 0,
+  "timestamp": 123456
+}
+```
+
+### Alarm State
+```json
+{
+  "device_id": "tinyol_device1",
+  "cluster": -1,
+  "label": "unknown",
+  "k": 2,
+  "alarm_active": true,
+  "frozen": true,
+  "sample_count": 100,
+  "rms_avg": 12.3,
+  "rms_max": 15.7,
+  "peak_avg": 18.5,
+  "peak_max": 22.1,
+  "crest_avg": 2.45,
+  "crest_max": 3.2,
+  "buffer_samples": 100,
+  "timestamp": 123456
 }
 ```
 
 **Field descriptions:**
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `device_id` | string | Unique device identifier |
-| `cluster` | int | Assigned cluster ID (0 to k-1) |
-| `label` | string | Human-readable label |
-| `k` | int | Total number of clusters |
-| `schema_version` | int | Feature schema version |
-| `timestamp` | int | Milliseconds since boot |
-| `features` | array | Extracted features (see schema below) |
-| `raw` | object | Raw accelerometer (optional, for debugging) |
-
----
-
-## Schema Version 1 (Current)
-
-**Feature array dimensions:** 3D
-
-**Mapping:**
-- `features[0]` = RMS (m/s²) - Overall vibration energy
-- `features[1]` = Peak (m/s²) - Maximum amplitude
-- `features[2]` = Crest Factor (dimensionless) - Peak/RMS ratio
-
-**Typical values:**
-- **Healthy motor:** RMS ~2-5 m/s², Crest ~1.4-1.6
-- **Mild unbalance:** RMS ~5-8 m/s², Crest ~1.5-1.8
-- **Severe fault:** RMS >10 m/s², Crest >2.0
-
-**SCADA channel mapping:**
-```
-sensor.device1.rms    ← features[0]
-sensor.device1.peak   ← features[1]
-sensor.device1.crest  ← features[2]
-sensor.device1.cluster ← cluster
-sensor.device1.label   ← label
-```
-
----
-
-## Schema Version 2 (Phase 2 - Future)
-
-**Feature array dimensions:** 7D
-
-**Mapping:**
-- `features[0-2]` = Same as v1 (vibration)
-- `features[3]` = Current L1 (A)
-- `features[4]` = Current L2 (A)
-- `features[5]` = Current L3 (A)
-- `features[6]` = Current Imbalance (%)
-
-**When to use:** After ZMCT103C sensors installed.
-
-**Migration:** SCADA checks `schema_version` field, ignores extra features if not configured.
+| Field | Type | Description | Normal | Alarm |
+|-------|------|-------------|--------|-------|
+| `device_id` | string | Unique identifier | "tinyol_device1" | "tinyol_device1" |
+| `cluster` | int | Assigned cluster (-1 if unknown) | 0 | -1 |
+| `label` | string | Cluster label | "normal" | "unknown" |
+| `k` | int | Total clusters | 1 | 2 |
+| `alarm_active` | bool | Alarm triggered | false | true |
+| `frozen` | bool | Buffer frozen | false | true |
+| `sample_count` | int | Samples in window | 100 | 100 |
+| `rms_avg` | float | Average RMS (m/s²) | 5.2 | 12.3 |
+| `rms_max` | float | Maximum RMS (m/s²) | 6.1 | 15.7 |
+| `peak_avg` | float | Average peak (m/s²) | 9.1 | 18.5 |
+| `peak_max` | float | Maximum peak (m/s²) | 11.2 | 22.1 |
+| `crest_avg` | float | Average crest factor | 1.75 | 2.45 |
+| `crest_max` | float | Maximum crest factor | 2.1 | 3.2 |
+| `buffer_samples` | int | Frozen buffer size | 0 | 100 |
+| `timestamp` | int | Milliseconds since boot | 123456 | 123456 |
 
 ---
 
@@ -89,228 +84,298 @@ sensor.device1.label   ← label
 
 **Topic:** `tinyol/{device_id}/label`
 
-**When to send:** Operator sees anomaly, wants to create new cluster.
+**When:** Operator inspects motor, confirms fault, types label
 
 ```json
 {
-  "label": "outer_race_fault",
-  "features": [8.5, 12.3, 1.45]
+  "label": "outer_race_fault"
 }
 ```
 
 **Effect:**
-- System creates new cluster (K increases by 1)
-- Centroid initialized at provided feature vector
-- Future similar patterns assigned to this cluster
+- Device creates new cluster from frozen buffer
+- K increases by 1
+- Buffer cleared, sampling resumes
+- Future similar patterns assigned to new cluster
 
 **Validation:**
-- Feature array length must match device schema version
-- Label must be unique (no duplicates)
+- Must be in FROZEN state
+- Label cannot be empty
+- Label cannot duplicate existing cluster
 - K < MAX_CLUSTERS (16)
-
-**Example workflow:**
-1. Operator sees high vibration in SCADA
-2. Copies current feature values: `[8.5, 12.3, 1.45]`
-3. Publishes label command with descriptive name
-4. Device creates cluster, subsequent samples cluster correctly
 
 ---
 
-## Correction Command (Operator → Device)
+## Discard Command (Operator → Device)
 
-**Topic:** `tinyol/{device_id}/label` (same as label command)
+**Topic:** `tinyol/{device_id}/discard`
 
-**When to send:** Device assigned sample to wrong cluster.
+**When:** Operator determines false alarm
 
 ```json
 {
-  "point": [8.5, 12.3, 1.45],
-  "old_cluster": 2,
-  "new_cluster": 1
+  "discard": true
 }
 ```
 
 **Effect:**
-- Old cluster centroid repels from point
-- New cluster centroid attracts point
-- Cluster counts updated
-
-**Example workflow:**
-1. Device assigns sample to cluster 2 (outer race)
-2. Operator knows it's actually cluster 1 (inner race)
-3. Publishes correction command
-4. Model refines boundaries
+- Buffer cleared without creating cluster
+- Sampling resumes
+- K unchanged
 
 ---
 
-## RapidSCADA Configuration
+## FUXA Configuration
 
-**Install MQTT driver:**
-1. Copy `KpMqtt.dll` to `ScadaComm/Drivers/`
-2. Restart SCADA Communicator
+### 1. Add MQTT Device
 
-**Add device:**
-1. Configuration → Devices → Add
-2. Protocol: MQTT Client
-3. Broker: `broker.hivemq.com:1883` (or your broker)
-4. Subscribe: `sensor/#`
+FUXA → **Connections** → **Add** → **MQTTclient**
 
-**Create channels:**
-```
-Channel 1: sensor.device1.cluster (int)
-Channel 2: sensor.device1.label (string)
-Channel 3: sensor.device1.rms (float)
-Channel 4: sensor.device1.peak (float)
-Channel 5: sensor.device1.crest (float)
-```
+- Name: `mqtt_broker`
+- Broker: `mqtt://localhost:1883`
+- Client ID: `fuxa_client_01`
+- QoS: `0`
 
-**Create table view:**
-- Timestamp
-- Cluster ID
-- Label
-- RMS
-- Peak
-- Crest
+### 2. Subscribe to Topics
 
-**Refresh rate:** 100ms (matches device publish rate)
+Device `mqtt_broker` → **Add** → **Search** → **Select Tags**
 
----
-
-## supOS-CE Configuration
-
-**Create MQTT data source:**
-1. System → Data Source → Add
-2. Type: MQTT
-3. Broker: `broker.hivemq.com:1883`
-4. Topics: `sensor/#`
-
-**Define tags:**
-```
-sensor.device1.data (JSON object)
-  ├── cluster (int)
-  ├── label (string)
-  └── features (array)
-      ├── [0] → rms (float)
-      ├── [1] → peak (float)
-      └── [2] → crest (float)
-```
-
-**Create dashboard:**
-- Time-series chart: RMS, Peak over 60s
-- Gauge: Crest factor (alarm at >2.0)
-- Text indicator: Current label
-
----
-
-## Node-RED Flow
-
-**Minimal flow:**
-```
-[mqtt-in] → [json] → [function] → [debug]
-          → [dashboard chart]
-```
-
-**MQTT-in node:**
-- Server: `broker.hivemq.com:1883`
 - Topic: `sensor/+/data`
-- Output: JSON
+- Type: `JSON`
 
-**Function node:**
-```javascript
-msg.payload = {
-    rms: msg.payload.features[0],
-    peak: msg.payload.features[1],
-    crest: msg.payload.features[2],
-    label: msg.payload.label
-};
-return msg;
-```
+### 3. Map JSON to Tags
 
-**Chart node:**
-- Type: Line
-- X-axis: Last 60 seconds
-- Y-axis: RMS, Peak
+All fields at root level (flat JSON):
+
+| Tag Name | JSON Path | Type | Alarm Color |
+|----------|-----------|------|-------------|
+| device_id | `device_id` | string | - |
+| cluster | `cluster` | int | Red if -1 |
+| label | `label` | string | - |
+| k | `k` | int | - |
+| alarm_active | `alarm_active` | bool | Red if true |
+| frozen | `frozen` | bool | - |
+| rms_avg | `rms_avg` | float | Yellow >10 |
+| rms_max | `rms_max` | float | Red >15 |
+| peak_avg | `peak_avg` | float | Yellow >15 |
+| peak_max | `peak_max` | float | Red >20 |
+| crest_avg | `crest_avg` | float | Yellow >2 |
+| crest_max | `crest_max` | float | Red >3 |
+| buffer_samples | `buffer_samples` | int | - |
+
+### 4. Create Dashboard
+
+**Alarm Banner (conditional visibility):**
+- Visible when: `alarm_active == true`
+- Background: Red, flashing
+- Text: "ANOMALY DETECTED - INSPECT MOTOR"
+- Size: Full width, 80px height
+
+**Status Display:**
+- Cluster: Text widget → `label`
+- K: Text widget → `k`
+- Frozen: LED indicator → `frozen`
+
+**Gauges (3x):**
+- RMS: 0-20 range, bind to `rms_avg`
+- Peak: 0-30 range, bind to `peak_avg`
+- Crest: 0-5 range, bind to `crest_avg`
+
+**Summary Table:**
+- Columns: `timestamp`, `cluster`, `label`, `rms_avg`, `peak_avg`
+- Last 20 rows (200 seconds history)
+- Auto-scroll enabled
+
+**Frozen Buffer Table (conditional visibility):**
+- Visible when: `buffer_samples > 0`
+- Shows: Detailed view of frozen samples
+- Note: Requires separate MQTT topic for buffer data (future enhancement)
+
+**Operator Controls:**
+- Input field → Variable: `label_input`
+- Button "Label" → MQTT Publish:
+  - Topic: `tinyol/{device_id}/label`
+  - Payload: `{"label":"${label_input}"}`
+  - Enabled when: `alarm_active == true`
+- Button "Discard" → MQTT Publish:
+  - Topic: `tinyol/{device_id}/discard`
+  - Payload: `{"discard":true}`
+  - Enabled when: `alarm_active == true`
+
+---
+
+## Operator Workflow
+
+### Step 1: Normal Monitoring
+- Watch summary table
+- RMS stays ~5 m/s², crest ~1.75
+- No alarms
+
+### Step 2: Anomaly Detected
+- Red banner appears: "ANOMALY DETECTED"
+- RMS jumps to 12.3 m/s²
+- `frozen: true`, `buffer_samples: 100`
+- Device stops sampling (waits for operator)
+
+### Step 3: Physical Inspection
+- Operator walks to motor (unlimited time)
+- Checks:
+  - Bearings (temperature, noise)
+  - Vibration (hand-feel)
+  - Visual inspection (oil leaks, cracks)
+  - Smell (burning, overheating)
+
+### Step 4: Decision
+**If real fault:**
+- Return to FUXA
+- Type label: "bearing_outer_race"
+- Click "Label"
+- Device creates cluster, K=2
+- Future samples auto-classify
+
+**If false alarm:**
+- Click "Discard"
+- Device clears buffer
+- Sampling resumes
+- No cluster created
+
+### Step 5: Confirmation
+- Banner disappears
+- `alarm_active: false`, `frozen: false`
+- Next summary shows new cluster (if labeled)
 
 ---
 
 ## Testing
 
-**Publish test data (Python):**
-```python
-import paho.mqtt.client as mqtt
-import json
-import time
-
-client = mqtt.Client()
-client.connect("broker.hivemq.com", 1883)
-
-msg = {
-    "device_id": "test_device",
-    "cluster": 0,
-    "label": "normal",
-    "k": 1,
-    "schema_version": 1,
-    "timestamp": int(time.time() * 1000),
-    "features": [5.65, 9.78, 1.73]
-}
-
-client.publish("sensor/test_device/data", json.dumps(msg))
-```
-
-**Subscribe to all data (terminal):**
+### Publish Normal Data
 ```bash
-mosquitto_sub -h broker.hivemq.com -t "sensor/#" -v
+mosquitto_pub -h localhost -t "sensor/test_device/data" \
+  -m '{
+    "device_id":"test_device",
+    "cluster":0,
+    "label":"normal",
+    "k":1,
+    "alarm_active":false,
+    "frozen":false,
+    "sample_count":100,
+    "rms_avg":5.2,
+    "rms_max":6.1,
+    "peak_avg":9.1,
+    "peak_max":11.2,
+    "crest_avg":1.75,
+    "crest_max":2.1,
+    "buffer_samples":0,
+    "timestamp":123456
+  }'
 ```
 
-**Add label (terminal):**
+### Publish Alarm
 ```bash
-mosquitto_pub -h broker.hivemq.com \
-  -t "tinyol/device1/label" \
-  -m '{"label":"outer_race_fault","features":[8.5,12.3,1.45]}'
+mosquitto_pub -h localhost -t "sensor/test_device/data" \
+  -m '{
+    "device_id":"test_device",
+    "cluster":-1,
+    "label":"unknown",
+    "k":1,
+    "alarm_active":true,
+    "frozen":true,
+    "sample_count":100,
+    "rms_avg":12.3,
+    "rms_max":15.7,
+    "peak_avg":18.5,
+    "peak_max":22.1,
+    "crest_avg":2.45,
+    "crest_max":3.2,
+    "buffer_samples":100,
+    "timestamp":123456
+  }'
 ```
 
----
+**FUXA should:**
+- Show red banner
+- Enable "Label" and "Discard" buttons
+- Display frozen values in gauges
 
-## Security Notes
+### Send Label
+```bash
+mosquitto_pub -h localhost \
+  -t "tinyol/test_device/label" \
+  -m '{"label":"bearing_fault"}'
+```
 
-**Public broker (testing only):**
-- No authentication
-- Data visible to anyone
-- Use only for development
+### Send Discard
+```bash
+mosquitto_pub -h localhost \
+  -t "tinyol/test_device/discard" \
+  -m '{"discard":true}'
+```
 
-**Production deployment:**
-- Private MQTT broker (Mosquitto, HiveMQ, etc.)
-- TLS encryption (port 8883)
-- Username/password authentication
-- Access Control Lists (ACL) per device
-
-**Example secure config:**
-```cpp
-#define MQTT_BROKER "mqtt.yourcompany.com"
-#define MQTT_PORT 8883
-#define MQTT_USER "device1"
-#define MQTT_PASS "securepassword"
+### Subscribe to All
+```bash
+mosquitto_sub -h localhost -t "#" -v
 ```
 
 ---
 
 ## Troubleshooting
 
-**Device publishes but SCADA sees nothing:**
-- Check topic spelling: `sensor/device1/data` (exact match)
-- Verify broker address
-- Check firewall (port 1883)
+**Banner doesn't appear:**
+- Check conditional visibility: `alarm_active == true`
+- Verify tag binding: Click banner → Properties → Visibility
 
-**SCADA shows old data:**
-- Restart SCADA Communicator service
-- Verify device is connected (LED blinks every 100ms)
+**Buttons don't publish:**
+- Check topic string: Must match device_id exactly
+- Verify payload JSON: No trailing commas
+- Test with `mosquitto_sub` to confirm message sent
 
-**Labels not working:**
-- Check subscribe topic: `tinyol/device1/label`
-- Verify JSON syntax (use validator)
-- Feature count must match schema version
+**Gauges show old values:**
+- Tags update every 10s (summary interval)
+- Check "Last Update" in tag list
+- Verify QoS=0 for fastest delivery
 
-**Performance issues:**
-- Reduce publish rate (10 Hz → 5 Hz)
-- Use QoS 0 (not 1 or 2)
-- Increase broker memory limit
+**Device doesn't respond to label:**
+- Serial Monitor should print: "✓ Labeled: bearing_fault (K=2)"
+- Check subscription: `mosquitto_sub -t "tinyol/#"`
+- Verify device is in FROZEN state
+
+---
+
+## Why Flat JSON?
+
+**SCADA compatibility:**
+- Many industrial systems don't parse nested objects
+- Tag paths like `features[0]` fail in some PLCs
+- Flat structure works everywhere
+
+**Debugging:**
+- Easier to log and inspect
+- Copy-paste into Excel works
+- No JSON path complexity
+
+**Performance:**
+- Faster parsing on microcontrollers
+- Less memory overhead
+- Simpler validation
+
+**Example of nested (bad for SCADA):**
+```json
+{
+  "features": {
+    "rms": {"avg": 5.2, "max": 6.1},
+    "peak": {"avg": 9.1, "max": 11.2}
+  }
+}
+```
+
+**Flat alternative (good for SCADA):**
+```json
+{
+  "rms_avg": 5.2,
+  "rms_max": 6.1,
+  "peak_avg": 9.1,
+  "peak_max": 11.2
+}
+```
+
+All fields at root level. Direct mapping to SCADA tags.

@@ -1,11 +1,13 @@
 /**
  * @file streaming_kmeans.h
- * @brief Label-driven incremental clustering for edge devices
+ * @brief Label-driven incremental clustering with freeze-on-alarm
  *
  * Features:
  * - Starts with K=1 (baseline "normal")
  * - Grows dynamically when operator labels new faults
- * - Memory: K × D × 4 bytes + metadata
+ * - Outlier detection triggers alarm state
+ * - Freeze-on-alarm workflow for operator inspection
+ * - Memory: K × D × 4 bytes + ring buffer
  * - Precision: Q16.16 fixed-point
  */
 
@@ -20,6 +22,7 @@
 #define MAX_FEATURES 64
 #define MAX_LABEL_LENGTH 32
 #define FIXED_POINT_SHIFT 16  // Q16.16 format
+#define RING_BUFFER_SIZE 100  // 10 seconds @ 10 Hz
 
 // Fixed-point type (range: ±32,768)
 typedef int32_t fixed_t;
@@ -28,6 +31,21 @@ typedef int32_t fixed_t;
 #define FLOAT_TO_FIXED(x) ((fixed_t)((x) * (1 << FIXED_POINT_SHIFT)))
 #define FIXED_TO_FLOAT(x) ((float)(x) / (1 << FIXED_POINT_SHIFT))
 #define FIXED_MUL(a, b) (((int64_t)(a) * (b)) >> FIXED_POINT_SHIFT)
+
+// System states
+typedef enum {
+    STATE_NORMAL,   // Normal operation, collecting samples
+    STATE_ALARM,    // Outlier detected, transitioning to freeze
+    STATE_FROZEN    // Waiting for operator action
+} system_state_t;
+
+// Ring buffer for freeze-on-alarm
+typedef struct {
+    fixed_t samples[RING_BUFFER_SIZE][MAX_FEATURES];
+    uint16_t head;          // Write pointer
+    uint16_t count;         // Samples stored
+    bool frozen;            // Buffer immutable
+} ring_buffer_t;
 
 // Cluster state
 typedef struct {
@@ -46,6 +64,12 @@ typedef struct {
     fixed_t learning_rate;            // Base learning rate (α)
     uint32_t total_points;            // Total points processed
     bool initialized;                 // Model ready flag
+    
+    // Alarm state
+    system_state_t state;             // Current system state
+    ring_buffer_t buffer;             // Sample buffer for freeze
+    fixed_t outlier_threshold;        // Distance threshold (× cluster radius)
+    fixed_t last_distance;            // Distance of last sample
 } kmeans_model_t;
 
 #ifdef __cplusplus
@@ -65,9 +89,9 @@ bool kmeans_init(kmeans_model_t* model, uint8_t feature_dim, float learning_rate
  * Process single data point (assign + update centroid)
  * @param model Model to update
  * @param point Feature vector (length = feature_dim)
- * @return Assigned cluster ID (0 to k-1)
+ * @return Assigned cluster ID (0 to k-1), or -1 if frozen
  */
-uint8_t kmeans_update(kmeans_model_t* model, const fixed_t* point);
+int8_t kmeans_update(kmeans_model_t* model, const fixed_t* point);
 
 /**
  * Predict cluster without updating model
@@ -79,14 +103,46 @@ uint8_t kmeans_predict(const kmeans_model_t* model, const fixed_t* point);
 
 /**
  * Add new cluster with operator-provided label
+ * Uses frozen buffer as seed samples
  * @param model Model to update
- * @param seed_point First sample of new fault type
  * @param label Fault label (e.g. "outer_race_fault")
- * @return true if cluster added, false if K >= MAX_CLUSTERS or duplicate label
+ * @return true if cluster added
  */
-bool kmeans_add_cluster(kmeans_model_t* model,
-                        const fixed_t* seed_point,
-                        const char* label);
+bool kmeans_add_cluster(kmeans_model_t* model, const char* label);
+
+/**
+ * Check if current sample is an outlier
+ * @param model Model to query
+ * @param point Feature vector
+ * @return true if distance > threshold × cluster_radius
+ */
+bool kmeans_is_outlier(const kmeans_model_t* model, const fixed_t* point);
+
+/**
+ * Trigger alarm state (freeze buffer)
+ * @param model Model to update
+ */
+void kmeans_alarm(kmeans_model_t* model);
+
+/**
+ * Discard frozen buffer and resume normal operation
+ * @param model Model to update
+ */
+void kmeans_discard(kmeans_model_t* model);
+
+/**
+ * Get current system state
+ * @param model Model to query
+ * @return Current state (NORMAL, ALARM, FROZEN)
+ */
+system_state_t kmeans_get_state(const kmeans_model_t* model);
+
+/**
+ * Get frozen buffer size
+ * @param model Model to query
+ * @return Number of samples in frozen buffer (0 if not frozen)
+ */
+uint16_t kmeans_get_buffer_size(const kmeans_model_t* model);
 
 /**
  * Get centroid coordinates
@@ -135,6 +191,13 @@ bool kmeans_correct(kmeans_model_t* model,
                     const fixed_t* point,
                     uint8_t old_cluster,
                     uint8_t new_cluster);
+
+/**
+ * Set outlier detection threshold
+ * @param model Model to update
+ * @param multiplier Threshold as multiple of cluster radius (default: 2.0)
+ */
+void kmeans_set_threshold(kmeans_model_t* model, float multiplier);
 
 #ifdef __cplusplus
 }

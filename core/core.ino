@@ -1,9 +1,12 @@
 /**
  * @file core.ino
- * @brief Vibration feature extraction + clustering
+ * @brief TinyOL-HITL with freeze-on-alarm workflow
  *
- * Current config: GY521 (MPU6050) only
- * Features: [rms, peak, crest] = 3D
+ * State machine:
+ * NORMAL → (outlier) → FROZEN → (label/discard) → NORMAL
+ *
+ * Publishes summary every 10s (not 100ms streaming)
+ * Flat JSON schema for SCADA compatibility
  */
 
 #include "config.h"
@@ -12,15 +15,11 @@
 #include <Wire.h>
 
 #ifndef LED_BUILTIN
-  // Default fallbacks for common boards:
   #if defined(ESP32) || defined(ARDUINO_ARCH_ESP32)
-    // Many ESP32 dev boards use GPIO2 as the built-in LED
     #define LED_BUILTIN 2
   #elif defined(ARDUINO_ARCH_RP2040)
-    // Raspberry Pi Pico typically uses GP25
     #define LED_BUILTIN 25
   #else
-    // Fall back to the common Arduino LED pin
     #define LED_BUILTIN 13
   #endif
 #endif
@@ -54,14 +53,20 @@ kmeans_model_t model;
 WiFiClient wifiClient;
 PubSubClient mqtt(wifiClient);
 char mqtt_topic_publish[64];
-char mqtt_topic_subscribe[64];
+char mqtt_topic_label[64];
+char mqtt_topic_discard[64];
 #endif
 
+// Windowing for 10-second summaries
+const int WINDOW_SIZE = 100;  // 100 samples @ 10 Hz = 10 seconds
+float window_samples[WINDOW_SIZE][3];  // [rms, peak, crest]
+int window_index = 0;
 unsigned long last_sample = 0;
-const int SAMPLE_INTERVAL_MS = 1000 / SAMPLE_RATE_HZ;
+unsigned long last_publish = 0;
+const int SAMPLE_INTERVAL_MS = 100;  // 10 Hz
+const int PUBLISH_INTERVAL_MS = 10000;  // 10 seconds
 
-// Feature dimension (compile-time)
-const uint8_t FEATURE_DIM = FeatureExtractor::getFeatureDim();
+const uint8_t FEATURE_DIM = 3;
 
 void platform_init() {
   Serial.begin(115200);
@@ -70,20 +75,17 @@ void platform_init() {
 
   #ifdef ESP32
     Serial.println("Platform: ESP32");
-    pinMode(LED_BUILTIN, OUTPUT);
   #elif defined(ARDUINO_ARCH_RP2040)
     Serial.println("Platform: RP2350");
-    pinMode(LED_BUILTIN, OUTPUT);
   #endif
 
-  Serial.print("Feature schema v");
-  Serial.println(FEATURE_SCHEMA_VERSION);
+  pinMode(LED_BUILTIN, OUTPUT);
 
-  // I2C init (platform-specific)
+  // I2C init
   #ifdef ARDUINO_ARCH_RP2040
-    Wire.begin();  // RP2040 uses default pins (GP4/GP5)
+    Wire.begin();
   #else
-    Wire.begin(I2C_SDA, I2C_SCL);  // ESP32 needs pins
+    Wire.begin(I2C_SDA, I2C_SCL);
   #endif
 
   #ifdef HAS_WIFI
@@ -99,7 +101,7 @@ void platform_init() {
       Serial.print(" Connected: ");
       Serial.println(WiFi.localIP());
     } else {
-      Serial.println(" Failed (offline mode)");
+      Serial.println(" Failed");
     }
   #endif
 }
@@ -115,60 +117,34 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length) {
     return;
   }
 
-  // Add cluster command
-  if (!doc["label"].isNull() && !doc["features"].isNull()) {
+  // Label command
+  if (strstr(topic, "/label")) {
     const char* label = doc["label"];
-    JsonArray features = doc["features"];
-
-    if (features.size() != FEATURE_DIM) {
-      Serial.print("Error: Expected ");
-      Serial.print(FEATURE_DIM);
-      Serial.print(" features, got ");
-      Serial.println(features.size());
+    if (!label) {
+      Serial.println("✗ Label missing");
       return;
     }
 
-    fixed_t point[FEATURE_DIM];
-    for (int i = 0; i < FEATURE_DIM; i++) {
-      point[i] = FLOAT_TO_FIXED(features[i].as<float>());
-    }
-
-    if (kmeans_add_cluster(&model, point, label)) {
-      Serial.print("✓ Added cluster: ");
+    if (kmeans_add_cluster(&model, label)) {
+      Serial.print("✓ Labeled: ");
       Serial.print(label);
       Serial.print(" (K=");
       Serial.print(model.k);
       Serial.println(")");
-
+      
       digitalWrite(LED_BUILTIN, HIGH);
-      delay(100);
+      delay(200);
       digitalWrite(LED_BUILTIN, LOW);
     } else {
-      Serial.println("✗ Failed to add cluster");
+      Serial.println("✗ Label failed (not frozen or duplicate)");
     }
   }
 
-  // Correction command
-  if (!doc["old_cluster"].isNull() && !doc["new_cluster"].isNull()) {
-    uint8_t old_cluster = doc["old_cluster"];
-    uint8_t new_cluster = doc["new_cluster"];
-    JsonArray features = doc["point"];
-
-    if (features.size() != FEATURE_DIM) {
-      Serial.println("✗ Correction: wrong feature count");
-      return;
-    }
-
-    fixed_t point[FEATURE_DIM];
-    for (int i = 0; i < FEATURE_DIM; i++) {
-      point[i] = FLOAT_TO_FIXED(features[i].as<float>());
-    }
-
-    if (kmeans_correct(&model, point, old_cluster, new_cluster)) {
-      Serial.print("✓ Corrected: ");
-      Serial.print(old_cluster);
-      Serial.print(" → ");
-      Serial.println(new_cluster);
+  // Discard command
+  if (strstr(topic, "/discard")) {
+    if (doc["discard"] == true) {
+      kmeans_discard(&model);
+      Serial.println("✓ Alarm discarded, resuming");
     }
   }
 }
@@ -182,7 +158,6 @@ bool mqtt_connect() {
   mqtt.setServer(MQTT_BROKER, MQTT_PORT);
   mqtt.setCallback(mqtt_callback);
 
-  // Connect with/without credentials
   bool connected;
   if (strlen(MQTT_USER) > 0) {
     connected = mqtt.connect(DEVICE_ID, MQTT_USER, MQTT_PASS);
@@ -193,12 +168,16 @@ bool mqtt_connect() {
   if (connected) {
     Serial.println("✓ MQTT connected");
 
-    snprintf(mqtt_topic_subscribe, sizeof(mqtt_topic_subscribe),
+    snprintf(mqtt_topic_label, sizeof(mqtt_topic_label),
              "tinyol/%s/label", DEVICE_ID);
-    mqtt.subscribe(mqtt_topic_subscribe);
+    snprintf(mqtt_topic_discard, sizeof(mqtt_topic_discard),
+             "tinyol/%s/discard", DEVICE_ID);
+    
+    mqtt.subscribe(mqtt_topic_label);
+    mqtt.subscribe(mqtt_topic_discard);
 
     Serial.print("Subscribed: ");
-    Serial.println(mqtt_topic_subscribe);
+    Serial.println(mqtt_topic_label);
 
     return true;
   }
@@ -206,6 +185,70 @@ bool mqtt_connect() {
   Serial.print("✗ MQTT failed, rc=");
   Serial.println(mqtt.state());
   return false;
+}
+
+void publish_summary(bool is_alarm) {
+  if (!mqtt.connected()) return;
+
+  // Compute statistics from window
+  float rms_sum = 0, rms_max = 0;
+  float peak_sum = 0, peak_max = 0;
+  float crest_sum = 0, crest_max = 0;
+
+  int valid_samples = (window_index > 0) ? window_index : WINDOW_SIZE;
+  for (int i = 0; i < valid_samples; i++) {
+    rms_sum += window_samples[i][0];
+    peak_sum += window_samples[i][1];
+    crest_sum += window_samples[i][2];
+
+    if (window_samples[i][0] > rms_max) rms_max = window_samples[i][0];
+    if (window_samples[i][1] > peak_max) peak_max = window_samples[i][1];
+    if (window_samples[i][2] > crest_max) crest_max = window_samples[i][2];
+  }
+
+  float rms_avg = rms_sum / valid_samples;
+  float peak_avg = peak_sum / valid_samples;
+  float crest_avg = crest_sum / valid_samples;
+
+  // Get cluster info
+  int8_t cluster = is_alarm ? -1 : 0;  // -1 = unknown during alarm
+  char label[MAX_LABEL_LENGTH] = "unknown";
+  if (!is_alarm && model.k > 0) {
+    cluster = 0;  // Will be set by last update
+    kmeans_get_label(&model, cluster, label);
+  }
+
+  system_state_t state = kmeans_get_state(&model);
+  uint16_t buffer_size = kmeans_get_buffer_size(&model);
+
+  // Flat JSON schema
+  JsonDocument doc;
+  doc["device_id"] = DEVICE_ID;
+  doc["cluster"] = cluster;
+  doc["label"] = label;
+  doc["k"] = model.k;
+  doc["alarm_active"] = (state == STATE_FROZEN);
+  doc["frozen"] = (state == STATE_FROZEN);
+  doc["sample_count"] = valid_samples;
+  doc["rms_avg"] = rms_avg;
+  doc["rms_max"] = rms_max;
+  doc["peak_avg"] = peak_avg;
+  doc["peak_max"] = peak_max;
+  doc["crest_avg"] = crest_avg;
+  doc["crest_max"] = crest_max;
+  doc["buffer_samples"] = buffer_size;
+  doc["timestamp"] = millis();
+
+  char buffer[512];
+  serializeJson(doc, buffer);
+
+  snprintf(mqtt_topic_publish, sizeof(mqtt_topic_publish),
+           "sensor/%s/data", DEVICE_ID);
+  mqtt.publish(mqtt_topic_publish, buffer);
+
+  if (is_alarm) {
+    Serial.println("⚠️  ALARM PUBLISHED");
+  }
 }
 #endif
 
@@ -216,7 +259,6 @@ void setup() {
   #ifdef SENSOR_ACCEL_ADXL345
     if (!accel.begin()) {
       Serial.println("✗ ADXL345 not found");
-      Serial.println("Check wiring: VCC→3.3V, GND→GND, SDA→21, SCL→22");
       while (1) {
         digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
         delay(100);
@@ -229,7 +271,6 @@ void setup() {
   #ifdef SENSOR_ACCEL_MPU6050
     if (!mpu.begin()) {
       Serial.println("✗ MPU6050 not found");
-      Serial.println("Check wiring: VCC→3.3V, GND→GND, SDA→21, SCL→22");
       while (1) {
         digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
         delay(100);
@@ -251,37 +292,33 @@ void setup() {
   Serial.print(", dim=");
   Serial.println(FEATURE_DIM);
 
-  // Print feature schema
-  char names[FEATURE_DIM][32];
-  FeatureExtractor::getFeatureNames(names);
-  Serial.print("Features: [");
-  for (int i = 0; i < FEATURE_DIM; i++) {
-    Serial.print(names[i]);
-    if (i < FEATURE_DIM - 1) Serial.print(", ");
-  }
-  Serial.println("]");
-
   #ifdef HAS_WIFI
   if (WiFi.isConnected()) {
     mqtt_connect();
-    snprintf(mqtt_topic_publish, sizeof(mqtt_topic_publish),
-             "sensor/%s/data", DEVICE_ID);
   }
   #endif
 
   Serial.println("=== Ready ===\n");
+  Serial.println("Publishing summaries every 10s");
 }
 
 void loop() {
   unsigned long now = millis();
 
+  #ifdef HAS_WIFI
+  mqtt.loop();
+  #endif
+
+  // Sample at 10 Hz
   if (now - last_sample < SAMPLE_INTERVAL_MS) {
-    #ifdef HAS_WIFI
-    mqtt.loop();
-    #endif
     return;
   }
   last_sample = now;
+
+  // Don't sample if frozen
+  if (kmeans_get_state(&model) == STATE_FROZEN) {
+    return;
+  }
 
   // Read raw accelerometer
   float ax, ay, az;
@@ -306,6 +343,12 @@ void loop() {
   float features_float[FEATURE_DIM];
   FeatureExtractor::extractInstantaneous(ax, ay, az, features_float);
 
+  // Store in window
+  window_samples[window_index][0] = features_float[0];  // rms
+  window_samples[window_index][1] = features_float[1];  // peak
+  window_samples[window_index][2] = features_float[2];  // crest
+  window_index = (window_index + 1) % WINDOW_SIZE;
+
   // Convert to fixed-point
   fixed_t features[FEATURE_DIM];
   for (int i = 0; i < FEATURE_DIM; i++) {
@@ -313,65 +356,60 @@ void loop() {
   }
 
   // Update clustering
-  uint8_t cluster_id = kmeans_update(&model, features);
+  int8_t cluster_id = kmeans_update(&model, features);
 
-  char label[MAX_LABEL_LENGTH];
-  kmeans_get_label(&model, cluster_id, label);
-
-  // Serial output
-  Serial.print("C");
-  Serial.print(cluster_id);
-  Serial.print("(");
-  Serial.print(label);
-  Serial.print(") | Raw:[");
-  Serial.print(ax, 2);
-  Serial.print(",");
-  Serial.print(ay, 2);
-  Serial.print(",");
-  Serial.print(az, 2);
-  Serial.print("] | F:[");
-  for (int i = 0; i < FEATURE_DIM; i++) {
-    Serial.print(features_float[i], 2);
-    if (i < FEATURE_DIM - 1) Serial.print(",");
-  }
-  Serial.print("] K=");
-  Serial.println(model.k);
-
-  // MQTT publish
-  #ifdef HAS_WIFI
-  if (WiFi.isConnected()) {
-    if (!mqtt.connected()) mqtt_connect();
-
+  // Check if alarm triggered
+  if (cluster_id == -1 && kmeans_get_state(&model) == STATE_FROZEN) {
+    Serial.println("⚠️  OUTLIER DETECTED - ALARM FROZEN");
+    
+    #ifdef HAS_WIFI
     if (mqtt.connected()) {
-      JsonDocument doc;
-      doc["device_id"] = DEVICE_ID;
-      doc["cluster"] = cluster_id;
-      doc["label"] = label;
-      doc["k"] = model.k;
-      doc["schema_version"] = FEATURE_SCHEMA_VERSION;
-      doc["timestamp"] = now;
-
-      // Feature array
-      JsonArray arr = doc["features"].to<JsonArray>();
-      for (int i = 0; i < FEATURE_DIM; i++) {
-        arr.add(features_float[i]);
-      }
-
-      // Raw accel for debugging
-      JsonObject raw = doc["raw"].to<JsonObject>();
-      raw["ax"] = ax;
-      raw["ay"] = ay;
-      raw["az"] = az;
-
-      char buffer[384];
-      serializeJson(doc, buffer);
-      mqtt.publish(mqtt_topic_publish, buffer);
+      publish_summary(true);  // Publish alarm
     }
-  }
-  #endif
+    #endif
 
-  // Activity blink
-  digitalWrite(LED_BUILTIN, HIGH);
-  delay(10);
-  digitalWrite(LED_BUILTIN, LOW);
+    // Flash LED
+    for (int i = 0; i < 5; i++) {
+      digitalWrite(LED_BUILTIN, HIGH);
+      delay(100);
+      digitalWrite(LED_BUILTIN, LOW);
+      delay(100);
+    }
+    
+    return;
+  }
+
+  // Publish summary every 10s
+  if (now - last_publish >= PUBLISH_INTERVAL_MS) {
+    last_publish = now;
+
+    char label[MAX_LABEL_LENGTH];
+    if (cluster_id >= 0) {
+      kmeans_get_label(&model, cluster_id, label);
+    } else {
+      strcpy(label, "normal");
+    }
+
+    Serial.print("Summary: C");
+    Serial.print(cluster_id);
+    Serial.print("(");
+    Serial.print(label);
+    Serial.print(") | RMS:");
+    Serial.print(features_float[0], 2);
+    Serial.print(" | K=");
+    Serial.println(model.k);
+
+    #ifdef HAS_WIFI
+    if (mqtt.connected()) {
+      publish_summary(false);
+    } else {
+      mqtt_connect();
+    }
+    #endif
+
+    // Activity blink
+    digitalWrite(LED_BUILTIN, HIGH);
+    delay(50);
+    digitalWrite(LED_BUILTIN, LOW);
+  }
 }

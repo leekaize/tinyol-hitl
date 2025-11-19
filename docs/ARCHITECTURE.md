@@ -1,188 +1,188 @@
 # System Architecture
 
-Label-driven incremental clustering. Grows from K=1 to K=N as faults discovered.
+Label-driven incremental clustering with freeze-on-alarm workflow. Device learns automatically, operator labels outliers only.
+
+## Overview
+
+**Normal operation:** Device clusters vibration patterns automatically. Publishes summary every 10s.
+
+**Anomaly detected:** Device freezes data, operator inspects physically, labels or discards.
+
+**No timeouts:** Operator has unlimited time to inspect motor before deciding.
+
+---
 
 ## Feature Extraction
 
-**Current implementation (Phase 1):**
+**Current implementation:**
 3D feature vector from accelerometer:
 - **RMS**: Overall vibration energy
 - **Peak**: Maximum amplitude
 - **Crest Factor**: Peak/RMS ratio (bearing faults spike)
 
-**Why these features:**
-- Orientation-independent (vs raw ax, ay, az)
-- Proven in bearing fault literature
-- Computationally cheap (<0.1ms on ESP32)
+**Aggregation window:** 10 seconds (100 samples @ 10 Hz)
 
-**Phase 2 (future):**
-7D feature vector adds current sensing:
-- [0-2]: RMS, Peak, Crest (vibration)
-- [3-6]: Current L1, L2, L3, Imbalance
+**Published statistics per window:**
+- Average: mean(rms), mean(peak), mean(crest)
+- Maximum: max(rms), max(peak), max(crest)
+- Sample count: 100 samples per summary
 
-**Comparison study:**
-Both versions needed for paper. Shows incremental value of electrical monitoring.
+**Why aggregate:**
+- Reduces MQTT traffic (1 msg/10s vs 10 msg/s)
+- Operator sees trends, not noise
+- Alarms persist long enough to notice
 
 ---
 
 ## Core Algorithm
 
-**Bootstrap (Day 1):**
+### State Machine
+
+```
+NORMAL → (outlier detected) → ALARM
+ALARM → (auto-freeze) → FROZEN
+FROZEN → (operator labels) → NORMAL + retrain
+FROZEN → (operator discards) → NORMAL
+```
+
+**NORMAL state:**
+- Collects samples in ring buffer (100 samples)
+- Every 10s: compute statistics, publish summary
+- Check if current window is outlier
+- If outlier: transition to ALARM
+
+**ALARM state:**
+- Freeze current buffer (mark immutable)
+- Publish alarm message with frozen statistics
+- Transition to FROZEN immediately
+
+**FROZEN state:**
+- Buffer held indefinitely
+- Wait for operator MQTT command: label or discard
+- No sampling (device pauses data collection)
+- On label: retrain model, clear buffer, resume
+- On discard: clear buffer, resume
+
+### Outlier Detection
+
+**Method:** Distance-based threshold
+
 ```c
-kmeans_init(&model, 3, 0.2f);  // 3D features, 0.2 learning rate
-// K=1, label="normal", centroid=[0,0,0]
-```
+// Compute distance from nearest cluster
+fixed_t dist = distance_to_nearest_cluster(features);
 
-**Discovery (When fault appears):**
-```c
-// Operator labels anomaly:
-// {"label": "outer_race_fault", "features": [8.5, 12.3, 1.45]}
+// Get cluster radius (average inertia)
+fixed_t threshold = cluster_radius * 2.0f;
 
-fixed_t point[3] = {
-    FLOAT_TO_FIXED(8.5),   // RMS
-    FLOAT_TO_FIXED(12.3),  // Peak
-    FLOAT_TO_FIXED(1.45)   // Crest
-};
-kmeans_add_cluster(&model, point, "outer_race_fault");
-// Now K=2
-```
-
-**Learning (Continuous):**
-```c
-// Extract features from sensor
-float features[3];
-FeatureExtractor::extractInstantaneous(ax, ay, az, features);
-
-// Convert to fixed-point
-fixed_t point[3];
-for (int i = 0; i < 3; i++) {
-    point[i] = FLOAT_TO_FIXED(features[i]);
-}
-
-// Update model
-uint8_t cluster = kmeans_update(&model, point);
-// Assigns to nearest, updates centroid via EMA
-```
-
-**Correction (When operator sees misclassification):**
-```c
-kmeans_correct(&model, point, 2, 1);
-// Repels from cluster 2, attracts to cluster 1
-```
-
----
-
-## Memory Layout
-
-**Per cluster:**
-```c
-typedef struct {
-    fixed_t centroid[64];      // Max 64D, currently using 3D
-    uint32_t count;            // 4 bytes
-    fixed_t inertia;           // 4 bytes
-    char label[32];            // 32 bytes
-    bool active;               // 1 byte
-} cluster_t;
-```
-
-**Model state (current config):**
-```c
-typedef struct {
-    cluster_t clusters[16];    // Max 16 clusters
-    uint8_t k;                 // Current count
-    uint8_t feature_dim;       // 3D currently
-    fixed_t learning_rate;
-    uint32_t total_points;
-    bool initialized;
-} kmeans_model_t;
-
-// Memory: 16 clusters × 3 features × 4 bytes = 192 bytes (data)
-// Total model: ~1.2 KB (with metadata)
-```
-
----
-
-## Data Flow
-
-```
-Sensor → Feature Extract → Clustering → MQTT Publish
-  ↓            ↓              ↑            ↓
-MPU6050    [RMS,Peak,     MQTT Sub     SCADA
-(I²C)      Crest]        (Labels)    (Dashboard)
-```
-
-**Sensor read (10 Hz):**
-```cpp
-void loop() {
-  // Read raw accelerometer
-  sensors_event_t a, g, temp;
-  mpu.getEvent(&a, &g, &temp);
-
-  // Extract features
-  float features[3];
-  FeatureExtractor::extractInstantaneous(
-      a.acceleration.x,
-      a.acceleration.y,
-      a.acceleration.z,
-      features
-  );
-
-  // Convert to fixed-point
-  fixed_t point[3];
-  for (int i = 0; i < 3; i++) {
-      point[i] = FLOAT_TO_FIXED(features[i]);
-  }
-
-  // Cluster assignment
-  uint8_t cluster = kmeans_update(&model, point);
-
-  // Get label
-  char label[32];
-  kmeans_get_label(&model, cluster, label);
-
-  // Publish to MQTT
-  mqtt.publish("sensor/device1/data", cluster, label, features);
+// Outlier if distance > 2× normal
+if (dist > threshold) {
+    trigger_alarm();
 }
 ```
+
+**Threshold tuning:** Adjustable via MQTT command
+- Default: 2× cluster radius
+- Conservative: 3× (fewer false alarms)
+- Aggressive: 1.5× (more sensitive)
+
+### Ring Buffer
+
+**Size:** 100 samples (10 seconds @ 10 Hz)
+
+**Implementation:**
+```c
+typedef struct {
+    fixed_t samples[100][MAX_FEATURES];
+    uint16_t head;
+    uint16_t count;
+    bool frozen;
+} ring_buffer_t;
+```
+
+**Normal operation:**
+- Continuously overwrites oldest samples
+- Compute statistics every 100 samples
+
+**On alarm:**
+- Mark buffer as frozen
+- Head pointer stops advancing
+- Samples preserved until operator acts
 
 ---
 
 ## MQTT Integration
 
-**Topics:**
+### Topic Structure
 
-**Publish (device → broker):**
-- `sensor/{device_id}/data` - Cluster assignments + features
+```
+sensor/{device_id}/data       # Summary messages (every 10s)
+sensor/{device_id}/alarm      # Alarm notifications (on outlier)
+tinyol/{device_id}/label      # Operator labels (button press)
+tinyol/{device_id}/discard    # Operator discards (button press)
+tinyol/{device_id}/threshold  # Adjust sensitivity
+```
 
-**Subscribe (broker → device):**
-- `tinyol/{device_id}/label` - Add new cluster
+### Flat JSON Schema
 
-**Message format (schema v1):**
+**Normal message (every 10s):**
 ```json
 {
   "device_id": "tinyol_device1",
   "cluster": 0,
   "label": "normal",
   "k": 1,
-  "schema_version": 1,
-  "timestamp": 123456,
-  "features": [5.65, 9.78, 1.73],
-  "raw": {"ax": 0.12, "ay": -0.05, "az": 9.78}
+  "alarm_active": false,
+  "frozen": false,
+  "sample_count": 100,
+  "rms_avg": 5.2,
+  "rms_max": 6.1,
+  "peak_avg": 9.1,
+  "peak_max": 11.2,
+  "crest_avg": 1.75,
+  "crest_max": 2.1,
+  "buffer_samples": 0,
+  "timestamp": 123456
 }
 ```
 
-**Feature mapping (v1):**
-- `features[0]` = RMS (m/s²)
-- `features[1]` = Peak (m/s²)
-- `features[2]` = Crest Factor (dimensionless)
-
-**Add label command:**
+**Alarm message (immediate on outlier):**
 ```json
 {
-  "label": "inner_race_fault",
-  "features": [8.5, 12.3, 1.45]
+  "device_id": "tinyol_device1",
+  "cluster": -1,
+  "label": "unknown",
+  "k": 2,
+  "alarm_active": true,
+  "frozen": true,
+  "sample_count": 100,
+  "rms_avg": 12.3,
+  "rms_max": 15.7,
+  "peak_avg": 18.5,
+  "peak_max": 22.1,
+  "crest_avg": 2.45,
+  "crest_max": 3.2,
+  "buffer_samples": 100,
+  "timestamp": 123456
 }
 ```
+
+**Label command (operator → device):**
+```json
+{
+  "label": "outer_race_fault"
+}
+```
+
+Device uses frozen buffer as seed for new cluster.
+
+**Discard command (operator → device):**
+```json
+{
+  "discard": true
+}
+```
+
+Device clears buffer, resumes normal operation.
 
 ---
 
@@ -210,69 +210,153 @@ Core algorithm identical. Platform layer handles I/O differences.
 
 ---
 
-## Industrial Integration
+## FUXA SCADA Integration
 
-**FUXA SCADA:**
-1. Install KpMqtt.dll driver
-2. Subscribe: `sensor/#`
-3. Map JSON fields to channels:
-   - `sensor.device1.features_0` → RMS channel
-   - `sensor.device1.features_1` → Peak channel
-   - `sensor.device1.features_2` → Crest channel
+### Dashboard Layout
 
-**supOS-CE:**
-1. MQTT data source
-2. Define tags: `sensor.{device_id}.features`
-3. Unified namespace auto-routes
+```
+┌─────────────────────────────────────────┐
+│  Motor Health Monitor                   │
+├─────────────────────────────────────────┤
+│  [ALARM BANNER - Red, flashing]         │  ← Only visible when alarm_active
+│  Anomaly detected: RMS 12.3 m/s²        │
+│  [Freeze] [Discard]                     │
+├─────────────────────────────────────────┤
+│  Current Status:                        │
+│  Cluster: [0] "normal"                  │
+│  K: 2 clusters                          │
+│                                         │
+│  Live Features (10s average):           │
+│  RMS:   5.2 m/s²  [gauge]              │
+│  Peak:  9.1 m/s²  [gauge]              │
+│  Crest: 1.75      [gauge]              │
+│                                         │
+│  History (last 20 summaries):           │
+│  [Table: timestamp | cluster | rms_avg] │
+│                                         │
+│  Frozen Data (when alarm active):       │
+│  [Table: 100 samples from buffer]       │
+│                                         │
+│  Label Input:                           │
+│  [Input: "fault_name"] [Button: Label]  │
+└─────────────────────────────────────────┘
+```
 
-**Node-RED:**
-1. MQTT-in → `sensor/#`
-2. JSON parse
-3. Dashboard gauges
+### Operator Workflow
 
-Zero code. Standard protocols.
+**1. Normal operation:**
+- Monitor gauges and table
+- RMS stays around 5 m/s²
+- No action needed
+
+**2. Anomaly detected:**
+- Red banner appears: "Anomaly detected"
+- Gauges show frozen values (RMS 12.3 m/s²)
+- Table shows 100 buffered samples
+- Device stops collecting new data
+
+**3. Operator inspects:**
+- Walks to motor
+- Checks bearings, listens for noise
+- Checks temperature, vibration
+- Takes hours if needed (no timeout)
+
+**4. Operator decides:**
+- **If real fault:** Type label "bearing_fault", click "Label"
+- **If false alarm:** Click "Discard"
+
+**5. Device response:**
+- On label: Creates new cluster, retrains on buffer
+- On discard: Clears buffer, resumes normal sampling
+- Banner disappears, gauges update
+
+### MQTT Configuration
+
+**FUXA Device:**
+- Broker: `localhost:1883`
+- Subscribe: `sensor/#`
+- QoS: 0
+
+**Tag mapping (flat JSON):**
+| Tag | JSON Path | Type |
+|-----|-----------|------|
+| alarm_active | `alarm_active` | bool |
+| frozen | `frozen` | bool |
+| cluster | `cluster` | int |
+| label | `label` | string |
+| rms_avg | `rms_avg` | float |
+| rms_max | `rms_max` | float |
+| buffer_samples | `buffer_samples` | int |
+
+**Button actions:**
+- "Label" → Publish `tinyol/{device_id}/label` with `{"label":"${input_value}"}`
+- "Discard" → Publish `tinyol/{device_id}/discard` with `{"discard":true}`
 
 ---
 
 ## Performance
 
-**Measured on ESP32 @ 240MHz:**
-- Feature extraction: 0.08ms
-- Update (K=4, D=3): 0.32ms
-- Predict: 0.28ms
-- Total loop: 0.68ms (leaves 99ms headroom at 10Hz)
+**Memory footprint:**
+- Model: <1 KB (16 clusters × 3 features × 4 bytes)
+- Ring buffer: 1.2 KB (100 samples × 3 features × 4 bytes)
+- Total: ~2.5 KB RAM
 
-**Measured on RP2040 @ 150MHz:**
-- Feature extraction: 0.12ms
-- Update (K=4, D=3): 0.51ms
-- Predict: 0.45ms
-- Total loop: 1.08ms (still <10% of 100ms budget)
+**Latency:**
+- Feature extraction: 0.08 ms
+- Outlier detection: 0.28 ms
+- MQTT publish: 10-15 ms
+- Total loop: <20 ms
 
-Both sub-millisecond. Suitable for 100 Hz if needed.
+**MQTT traffic:**
+- Normal: 1 message per 10 seconds
+- Alarm: 1 additional message on detection
+- Total: ~9 KB/hour (vs 3.6 MB/hour at 10 Hz)
 
 ---
 
-## Phase 2: Current Sensing
+## Key Design Decisions
 
-**When to add:**
-After baseline accuracy established on vibration-only.
+### Why 10-second summaries?
+
+**Not real-time critical:** Bearing faults develop over days/weeks
+**Operator response time:** Humans take minutes to act
+**MQTT efficiency:** 360× less traffic vs 10 Hz streaming
+**Trend visibility:** Averages filter sensor noise
+
+### Why unlimited freeze time?
+
+**Physical inspection required:** Operator must walk to motor
+**Shift changes:** May need next operator to investigate
+**Documentation:** May need photos, measurements
+**Pragmatic:** Can't force 5-minute deadline on factory floor
+
+### Why flat JSON?
+
+**SCADA compatibility:** Not all systems parse nested objects
+**Tag mapping simplicity:** Direct path to values
+**Debugging ease:** Easier to log and inspect
+**Industry standard:** OT systems expect flat structures
+
+---
+
+## Phase 2: Current Sensing (Future)
+
+**When to add:** After vibration-only baseline validated
 
 **Hardware:**
-- ZMCT103C current transformers (3x for L1, L2, L3)
+- ZMCT103C current transformers (3× for L1, L2, L3)
 - 100Ω burden resistors
 - ESP32 ADC pins: 36, 39, 34
 
-**Feature vector expansion:**
-- Current: [0-2] = Vibration features (unchanged)
+**Feature expansion:**
+- Current: [0-2] = Vibration (RMS, Peak, Crest)
 - New: [3-6] = I_L1, I_L2, I_L3, Imbalance
 
-**Schema version bump:**
-v1 → v2. SCADA knows how to interpret via `schema_version` field.
+**JSON schema update:**
+Add fields: `current_l1_avg`, `current_l1_max`, etc.
+Increment `schema_version` to 2.
 
 **Expected improvement:**
-- Bearing faults: Minimal (5% gain)
-- Electrical faults: Significant (20-30% gain)
-- Rotor unbalance: Moderate (10-15% gain)
-
-**Why deferred:**
-Need baseline first. Paper shows dynamic clustering, not feature engineering.
+- Bearing faults: Minimal (vibration sufficient)
+- Electrical faults: Significant (loose connections, phase imbalance)
+- Rotor bar defects: High (current signature analysis)

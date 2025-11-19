@@ -1,6 +1,4 @@
-# TinyOL-HITL
-
-Label-driven incremental clustering for edge devices. No pre-training. Grows from K=1 to K=N as faults discovered.
+# TinyOL-HITL: Unsupervised TinyML Fault Discovery with Operator Guidance for Industrial Condition Monitoring
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 [![Platforms](https://img.shields.io/badge/Platforms-ESP32%20%7C%20RP2350-blue.svg)](core/)
@@ -8,21 +6,20 @@ Label-driven incremental clustering for edge devices. No pre-training. Grows fro
 
 ## Problem
 
-Predictive maintenance stuck at 27% adoption. Three barriers tackled through this solution:
+Predictive maintenance stuck at 27% adoption. Three barriers:
 - ML expertise shortage
 - Vendor lock-in
 - Integration complexity
 
 ## Solution
 
-Start with K=1. Operator labels faults as discovered. System grows organically.
+Start with K=1. Device learns automatically. Operator labels outliers only.
 
 - **Day 1:** K=1, everything = "normal"
-- **Day 5:** Operator sees anomaly → label "outer_race_fault" → K=2
-- **Week 2:** Third fault → K=3
-- **Month 1:** Fourth fault → K=4
+- **Week 1:** Anomaly detected → operator inspects → labels "bearing_fault" → K=2
+- **Month 1:** System discovers 4 fault types organically
 
-Arduino sketch. Any board (ESP32, RP2350). MQTT to any broker. <100KB RAM.
+Arduino library. Any board (ESP32, RP2350). MQTT to FUXA SCADA. <1KB memory.
 
 ## Quick Start
 
@@ -40,6 +37,7 @@ https://github.com/earlephilhower/arduino-pico/releases/download/global/package_
 **2. Upload sketch** (2 min)
 ```bash
 # File → Open → core/core.ino
+# Copy config.template.h to config.h
 # Edit WiFi credentials in config.h
 # Tools → Board: ESP32S3 Dev Module (or Raspberry Pi Pico 2 W)
 # Tools → Port: /dev/ttyUSB0
@@ -55,31 +53,39 @@ SDA     → GPIO21
 SCL     → GPIO22
 ```
 
-**4. Monitor MQTT** (1 min)
+**4. Run FUXA SCADA** (1 min)
 ```bash
-mosquitto_sub -h broker.hivemq.com -t "sensor/#" -v
+# On Raspberry Pi or any Docker host
+docker run -d \
+  -p 1881:1881 \
+  -v fuxa_appdata:/usr/src/app/FUXA/server/_appdata \
+  -v fuxa_db:/usr/src/app/FUXA/server/_db \
+  frangoteam/fuxa:latest
+
+# Access: http://<host-ip>:1881
 ```
 
-Success: See cluster assignments streaming every 100ms.
-
-## Label New Fault Type
-
-When anomaly appears in RapidSCADA:
-
+**5. Connect MQTT** (1 min)
 ```bash
-mosquitto_pub -h broker.hivemq.com \
-  -t "tinyol/device1/label" \
-  -m '{"label":"outer_race_fault","features":[0.5,0.2,0.8]}'
-```
+# Run Mosquitto
+docker run -d -p 1883:1883 --name mosquitto eclipse-mosquitto
 
-System creates new cluster. Future similar patterns → assigned to that cluster.
+# Device publishes to: sensor/device1/data
+# Operator labels via: tinyol/device1/label
+```
 
 ## How It Works
 
-**Feature extraction:**
+**Unsupervised learning:**
+Device clusters vibration patterns automatically. No training needed.
+
+**Operator guidance:**
+When outlier detected → alarm freezes → operator inspects physically → labels → device retrains.
+
+**Feature extraction (3D):**
 - RMS: Overall vibration energy
 - Peak: Maximum amplitude
-- Crest Factor: Peak/RMS ratio (bearing faults spike high)
+- Crest Factor: Peak/RMS ratio (bearing faults spike)
 
 **Streaming k-means with EMA:**
 ```
@@ -87,20 +93,16 @@ c_new = c_old + α(x - c_old)
 α = base_lr / (1 + 0.01 × count)
 ```
 
-**Memory:** K × D × 4 bytes. Current (K=16, D=3): 192 bytes.
-
-**Latency:** <1ms per sample. Squared distance (no sqrt).
-
-**Phase 2:** Add current sensing → 7D features. Compare accuracy improvement.
+**Memory:** <1KB model. Sub-millisecond inference.
 
 ## Validation
 
-- **CWRU dataset:** 1904 samples, 4 classes, streaming @ 115200 baud
-- **Hardware:** 0.5 HP motor, ADXL345 + MPU6050, ESP32 DEVKIT V1 + RP2350, ZMCT103C current sensing
-- **Test method:** Eccentric weight unbalance (non-destructive, repeatable)
-- **Protocols:** MQTT → RapidSCADA / supOS-CE / Node-RED
+- **CWRU dataset:** 1904 samples, 4 fault classes, streaming @ 115200 baud
+- **Hardware:** 2 HP motor, ADXL345/MPU6050, ESP32/RP2350
+- **SCADA:** FUXA via MQTT
+- **Test method:** Eccentric weight unbalance (non-destructive)
 
-Results: [PLACEHOLDER]
+Results: In progress
 
 ## Supported Platforms
 
@@ -109,46 +111,21 @@ Results: [PLACEHOLDER]
 | ESP32 DEVKIT V1 | Xtensa LX6 | 520KB | 240MHz | ✓ |
 | RP2350 (Pico 2 W) | ARM Cortex-M33 | 520KB | 150MHz | ✓ |
 
-Same code compiles for both. Platform layer handles WiFi/I²C differences.
+Same code compiles for both. Arduino IDE removes platform complexity.
 
 ## Project Structure
 
 ```
 core/                   # Arduino sketch
 ├── core.ino            # Main loop (sensor → cluster → MQTT)
-├── streaming_kmeans.c  # Dynamic clustering algorithm
-├── streaming_kmeans.h  # API (kmeans_init, kmeans_add_cluster)
-├── platform_esp32.cpp  # ESP32 WiFi/I²C
-├── platform_rp2350.cpp # RP2350 WiFi/I²C
-└── config.h            # WiFi credentials, MQTT broker
+├── streaming_kmeans.c  # Unsupervised clustering
+├── streaming_kmeans.h  # API
+└── config.h            # WiFi + MQTT settings
 
 data/datasets/cwru/     # CWRU bearing dataset
-├── download.py         # Fetch .mat files
-├── extract_features.py # RMS, kurtosis, crest, variance
-├── to_binary.py        # Q16.16 binary conversion
-└── stream_dataset.py   # Serial streaming (Python → Arduino)
-
-libraries/MQTTConnector/ # MQTT publish/subscribe wrapper
-integrations/           # RapidSCADA, supOS-CE configs
-hardware/test_rig/      # 0.5 HP motor wiring diagram
-docs/                   # Architecture, task list, paper
+integrations/           # FUXA SCADA setup guide
+docs/                   # Architecture, task list
 ```
-
-## Use Cases
-
-- **Bearing faults:** Ball, inner race, outer race defects
-- **Motor health:** Vibration + current monitoring
-- **Leak detection:** Pressure transients
-- **Tool wear:** CNC spindle vibration
-
-Any time-series sensor data. System learns patterns incrementally.
-
-## Integration
-
-**SCADA:** MQTT → supOS-CE (UNS tags) → RapidSCADA (native driver)
-**Historian:** MQTT → supOS-CE → PostgreSQL
-
-No vendor lock-in. Standard protocols.
 
 ## Cost Analysis
 
@@ -166,17 +143,14 @@ Breakeven: <2 months. Zero recurring fees.
 
 ## Documentation
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - Label-driven clustering design
-- [docs/DATASETS.md](docs/DATASETS.md) - CWRU workflow + feature extraction
-- [docs/HARDWARE.md](docs/HARDWARE.md) - Test rig wiring + sensor mounting
-- [docs/TASK_LIST.md](docs/TASK_LIST.md) - 7-day sprint plan
-- [docs/paper/](docs/paper/) - Research paper (LaTeX)
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) - System design
+- [docs/DATASETS.md](docs/DATASETS.md) - CWRU workflow
+- [integrations/README.md](integrations/README.md) - FUXA setup
+- [docs/TASK_LIST.md](docs/TASK_LIST.md) - 7-day sprint
 
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
-
-**Priority:** <7 days. Ship MVP. Expand later.
 
 ## License
 
@@ -186,4 +160,4 @@ Apache-2.0. Industrial-friendly. Fork freely.
 
 **Target audience:** SMEs, embedded engineers, maintenance teams
 **Deployment time:** 30 minutes first device, 10 minutes subsequent
-**Proven on:** CWRU dataset + real 0.5 HP induction motor
+**Proven on:** CWRU dataset + 2 HP induction motor

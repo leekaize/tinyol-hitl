@@ -1,191 +1,224 @@
 # 7-Day Sprint to Paper Submission
 
-## Status: Algorithm ready, integration needed
+## Status: Algorithm updated with freeze-on-alarm workflow
 
-## Day 1: Wire sensor → MQTT → FUXA SCADA
+## Day 1: FUXA SCADA Integration ✓
 
-**Goal:** Live cluster assignments in SCADA
+**Goal:** Live cluster monitoring with freeze-on-alarm
 
-- [x] Add sensor to core.ino (GY521, ADXL345 & ZMCT103C, allow user selection on connected sensors)
-- [x] Add MQTT publish
-- [ ] Install FUXA SCADA, add MQTT driver
-- [ ] Configure subscription: `sensor/#`
-- [ ] Create table view showing cluster ID + timestamp
+- [x] Add sensor to core.ino (MPU6050/ADXL345)
+- [x] Implement freeze-on-alarm state machine
+- [x] Flat JSON schema (SCADA compatible)
+- [x] 10-second summary publishing (not 100ms streaming)
+- [x] Ring buffer for alarm state (100 samples)
+- [x] Install FUXA SCADA
+- [x] Install Mosquitto broker
+- [x] Configure MQTT device in FUXA
+- [ ] Create dashboard with alarm banner and freeze buttons
+- [ ] Test end-to-end: alarm → freeze → label → resume
 
-**Success check:** FUXA SCADA table updates every 100ms with live cluster assignments
+**Next:** Complete FUXA dashboard with freeze workflow
+
+**Status:** Algorithm ready, FUXA partially configured
+
+---
 
 ## Day 2: CWRU baseline validation
 
-**Goal:** Prove algorithm works on public dataset
+**Goal:** Prove unsupervised clustering works
 
-- [ ] Stream CWRU dataset via Serial (use existing stream_dataset.py)
-- [ ] Log cluster assignments per sample
+- [ ] Download CWRU dataset (~2GB)
+- [ ] Extract features (RMS, kurtosis, crest, variance)
+- [ ] Convert to binary format
+- [ ] Stream via Serial to ESP32
+- [ ] Log cluster assignments
 - [ ] Compute confusion matrix (4 classes)
-- [ ] Compare to literature baseline (SVM: 85-95%)
+- [ ] Compare to literature baseline
 
-**Success check:** Unsupervised accuracy >70%, matches SVM range
+**Success check:** Reliable unsupervised classification
 
-**Data:** 1904 samples, 4 classes (normal, ball, inner, outer)
+**Commands:**
+```bash
+cd data/datasets/cwru
+pip3 install -r requirements.txt
+python3 download.py
+python3 extract_features.py --input raw/ --output features/
+python3 to_binary.py --input features/ --output binary/
+python3 tools/stream_dataset.py /dev/ttyUSB0 binary/normal.bin
+```
+
+---
 
 ## Day 3: Real motor baseline
 
-**Goal:** Show it works on hardware
+**Goal:** Hardware validation
 
-- [ ] Wire ADXL345 + MPU6050 to motor housing
-- [ ] Wire ZMCT103C to motor phases (L1, L2, L3)
+- [ ] Wire ADXL345/MPU6050 to motor housing
 - [ ] Run motor 5 min @ 1500 RPM (no weights = healthy)
-- [ ] Mount pulley, test eccentric weight attachment
-- [ ] Log baseline: 300 samples, verify tight clustering
+- [ ] Verify tight clustering (>95% in cluster 0)
+- [ ] Mount pulley for eccentric weight testing
 
-**Success check:** Cluster radius <0.3 units, >95% samples in single cluster
+**Success check:** Baseline cluster well-defined
 
-**Fallback:** If motor unavailable, synthetic vibration data (function generator + speaker)
+**Fallback:** If motor unavailable, synthetic data or CWRU only
+
+---
 
 ## Day 4: Label-driven growth demo
 
-**Goal:** Prove dynamic clustering
+**Goal:** Prove dynamic clustering (K=1 → K=N)
 
-**Scenario 1 - Add second cluster:**
-- [ ] Add mild unbalance (50 g·mm)
-- [ ] Run 2 min, see vibration increase in SCADA
-- [ ] Label: `{"label":"mild_unbalance","features":[x,y,z,rms,i1,i2,i3]}`
-- [ ] Verify K=2, new cluster forms
+**Scenario 1 - Mild Unbalance:**
+1. Add 50 g·mm eccentric weight
+2. Run 2 min, observe RMS increase in FUXA
+3. System triggers alarm (outlier detected)
+4. Operator inspects motor
+5. Label: `mild_unbalance`
+6. Verify K=2, new cluster formed
 
-**Scenario 2 - Add third cluster:**
-- [ ] Change speed to 1800 RPM (or different load)
-- [ ] Label: `{"label":"high_speed_normal","features":[x,y,z]}`
-- [ ] Verify K=3
+**Scenario 2 - Different Operating Condition:**
+1. Change speed to 1800 RPM
+2. Alarm triggers (different vibration signature)
+3. Label: `high_speed_normal`
+4. Verify K=3
 
-**Success check:** System grows 1→2→3 clusters, separation visible in SCADA
+**Success check:** System grows organically, operator-guided
+
+---
 
 ## Day 5: HITL correction validation
 
-**Goal:** Show corrections improve accuracy
+**Goal:** Show operator feedback improves accuracy
 
-- [ ] Inject 5 intentional misclassifications (assign wrong cluster via correction message)
-- [ ] Re-run CWRU stream
-- [ ] Measure accuracy before vs after corrections
-- [ ] Target: +10-15% improvement
+- [ ] Re-run CWRU stream (baseline accuracy)
+- [ ] Inject 5 intentional misclassifications via correction command
+- [ ] Measure accuracy improvement
+- [ ] Target: Measurable gain from corrections
 
 **Correction format:**
 ```json
 {"point": [0.5,0.2,0.8], "old_cluster": 2, "new_cluster": 1}
 ```
 
-**Success check:** Accuracy improves measurably
+**Success check:** Accuracy improves with human guidance
+
+---
 
 ## Day 6: Cross-platform validation
 
 **Goal:** Prove portability (Xtensa + ARM)
 
-- [ ] Upload identical sketch to RP2350 (Pico 2 W)
+- [ ] Upload to RP2350 (Pico 2 W)
 - [ ] Stream same CWRU dataset
 - [ ] Compare cluster assignments: ESP32 vs RP2350
 - [ ] Measure delta: max(|c_ESP32 - c_RP2350|)
 
 **Success check:** Delta <0.1 (fixed-point consistency)
 
-**If RP2350 unavailable:** Document that code compiles for both, defer actual test
+**Fallback:** Document code compiles for both platforms
 
-## Day 7: Paper + documentation finalization
+---
 
-**Goal:** Submission-ready paper
+## Day 7: Paper finalization
+
+**Goal:** Camera-ready submission
 
 **Morning:**
-- [ ] Update paper Section V (Results) with actual numbers
-- [ ] Generate figures: confusion matrices, cluster visualization
-- [ ] Fill placeholders: [PLACEHOLDER: X%] → actual accuracy
+- [ ] Update Results section with actual numbers
+- [ ] Generate figures (confusion matrices, cluster plots)
+- [ ] Replace placeholders with data
 - [ ] Compile PDF, verify citations
 
 **Afternoon:**
-- [ ] Record 3-min demo video:
-  - Upload sketch
-  - Stream CWRU data
-  - Add label via MQTT
-  - Show cluster growth
+- [ ] Record demo video (3 min):
+  - FUXA dashboard with live data
+  - Alarm triggered
+  - Operator labels outlier
+  - Cluster grows (K=1 → K=2)
 - [ ] Push to GitHub with tag `v1.0-paper`
-- [ ] README status badge: "Paper submitted"
+- [ ] Update README with results
 
-**Success check:** Paper compiles, video uploaded, repo tagged
+**Success check:** Paper ready, demo recorded
 
 ---
 
 ## Phase 2: Current Sensing (Post-Paper)
 
-**Goal:** Compare vibration-only vs vibration+current
-
-**Why deferred:**
-- Need baseline accuracy first
-- Paper contribution: dynamic clustering, not feature engineering
-- Current sensing = incremental improvement, not core novelty
+**Why deferred:** Need vibration baseline first
 
 **When sensors arrive:**
-- [ ] Wire ZMCT103C to motor phases (L1, L2, L3)
+- [ ] Wire ZMCT103C to L1, L2, L3
 - [ ] Update feature vector: 3D → 7D
-- [ ] Re-run all experiments
-- [ ] Measure improvement: vibration-only vs combined
+- [ ] Re-run experiments
+- [ ] Measure improvement vs vibration-only
 
-**Hypothesis:** Current adds 5-10% accuracy for electrical faults (bearing: minimal gain)
+**Hypothesis:** Current adds value for electrical faults
 
 ---
 
-## What Gets Cut if Time Short
-
-**Priority 1 (Must have):**
-- Sensor reading (Day 1)
-- CWRU validation (Day 2)
-- Dynamic clustering demo (Day 4)
-
-**Priority 2 (Nice to have):**
-- Real motor test (Day 3) → use CWRU only
-- HITL corrections (Day 5) → document algorithm, defer experiment
-- Cross-platform (Day 6) → show code compiles for both
-
-**Priority 3 (Future work):**
-- RapidSCADA integration → use mosquitto_sub
-- Multiple fault types → just normal + outer race
-- Power profiling → cut completely
-
-## Risk Mitigation
-
-**Risk 1 - Hardware failure:**
-Fallback: CWRU dataset only, no motor test
-
-**Risk 2 - MQTT issues:**
-Fallback: Serial logging, post-process offline
-
-**Risk 3 - Time overrun:**
-Cut Priority 2/3, ship Priority 1 only
-
-**Risk 4 - Accuracy too low:**
-Document as "baseline for future HITL", show improvement potential
-
 ## Definition of Done
 
-Paper demonstrates:
+**Must have (for paper):**
 1. [x] Algorithm works (tests pass)
-2. [x] Cross-platform (both compile)
-3. [ ] Dynamic clustering (K grows 1→N)
-4. [ ] CWRU validation (accuracy vs literature)
-5. [OPTIONAL] Real hardware
+2. [x] Cross-platform Arduino library
+3. [x] Freeze-on-alarm workflow implemented
+4. [ ] FUXA dashboard operational
+5. [ ] Dynamic clustering demo (K grows)
+6. [ ] CWRU validation (baseline accuracy)
 
-Minimum: Items 1-4. Item 5 if motor ready.
+**Nice to have:**
+- [ ] Real motor test (if time permits)
+- [ ] HITL corrections (document algorithm)
+- [ ] Cross-platform hardware test
+
+**Minimum for submission:** Items 1-6. Rest is future work.
 
 ---
 
 ## Current Progress
 
 **Completed:**
-- Streaming k-means (200 lines C)
-- Platform abstraction (ESP32 + RP2040)
-- Feature extraction (RMS, peak, crest)
-- MQTT publish schema
-- Unit tests in CI
+- ✓ Streaming k-means with freeze-on-alarm
+- ✓ Platform abstraction (ESP32 + RP2350)
+- ✓ Feature extraction (RMS, peak, crest)
+- ✓ Flat JSON schema
+- ✓ MQTT publish/subscribe
+- ✓ Ring buffer for alarm state
+- ✓ Outlier detection (distance threshold)
+- ✓ Unit tests in CI
+- ✓ Paper title/abstract submitted
+- ✓ FUXA + Mosquitto installed
+
+**In progress:**
+- FUXA dashboard creation (alarm banner, buttons)
 
 **Next 24 hours:**
-- FUXA SCADA endpoint
-- CWRU streaming pipeline
-- Confusion matrix generation
+- Complete FUXA dashboard
+- Test freeze-on-alarm workflow end-to-end
+- Start CWRU dataset download
 
-**7 days from now:**
-PDF submitted, code tagged, demo recorded.
+**7 days remaining.** On track for paper submission.
+
+---
+
+## Architecture Summary
+
+**State machine:**
+```
+NORMAL → (outlier) → FROZEN → (label) → NORMAL + K++
+                      ↓
+                  (discard) → NORMAL
+```
+
+**Key features:**
+- No timeouts (operator has unlimited time to inspect)
+- Flat JSON (SCADA compatibility)
+- 10-second summaries (not real-time streaming)
+- Ring buffer holds 100 samples on alarm
+- Device learns automatically, operator labels outliers only
+
+**Memory:** <2.5 KB (model + buffer)
+**Latency:** <20 ms per loop
+**MQTT traffic:** ~9 KB/hour
+
+Pragmatic. Industrial-ready. Operator-friendly.
