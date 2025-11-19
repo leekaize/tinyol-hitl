@@ -1,168 +1,197 @@
-# System Architecture
+# Architecture
 
-Label-driven incremental clustering with freeze-on-alarm workflow. Device learns automatically, operator labels outliers only.
+Label-driven clustering. Device learns automatically. Operator labels outliers only.
 
-## Overview
+## State Machine
 
-**Normal operation:** Device clusters vibration patterns automatically. Publishes summary every 10s.
+```mermaid
+stateDiagram-v2
+    [*] --> NORMAL
 
-**Anomaly detected:** Device freezes data, operator inspects physically, labels or discards.
+    NORMAL --> FROZEN: Outlier detected<br/>(distance > 2× radius)
 
-**No timeouts:** Operator has unlimited time to inspect motor before deciding.
+    FROZEN --> FROZEN_IDLE: Motor stops<br/>(RMS < 0.5 m/s² for 1s)
+    FROZEN_IDLE --> FROZEN: Motor restarts<br/>(RMS > 0.5 m/s²)
 
----
+    FROZEN --> NORMAL: Operator labels<br/>(K = K + 1)
+    FROZEN_IDLE --> NORMAL: Operator labels<br/>(K = K + 1)
+
+    FROZEN --> NORMAL: Operator discards<br/>(K unchanged)
+    FROZEN_IDLE --> NORMAL: Operator discards<br/>(K unchanged)
+
+    note left of NORMAL
+        - Sample at 10 Hz
+        - Publish summary every 10s
+        - Check outliers
+    end note
+
+    note right of FROZEN
+        - Buffer frozen (100 samples)
+        - No sampling
+        - Wait for operator
+    end note
+
+    note right of FROZEN_IDLE
+        - Alarm persists
+        - Survives shift changes
+        - Label at convenience
+    end note
+```
+
+## Data Flow
+
+```mermaid
+graph TB
+    subgraph "Every 100ms"
+        A[Read accelerometer] --> B[Extract features]
+        B --> C{State?}
+
+        C -->|NORMAL| D[Add to buffer]
+        C -->|FROZEN| E[Reject update]
+
+        D --> F{Outlier?}
+        F -->|Yes| G[Trigger alarm]
+        F -->|No| H[Update centroid]
+
+        H --> I[Increment count]
+        I --> J[Update inertia]
+    end
+
+    subgraph "Every 10 seconds"
+        K[Compute statistics] --> L[Publish MQTT]
+        L --> M[FUXA SCADA]
+    end
+
+    subgraph "Operator action"
+        M --> N{Decision}
+        N -->|Label| O[Create cluster]
+        N -->|Discard| P[Clear buffer]
+
+        O --> Q[K = K + 1]
+        P --> Q
+        Q --> R[Resume NORMAL]
+    end
+```
 
 ## Feature Extraction
 
-**Current implementation:**
-3D feature vector from accelerometer:
-- **RMS**: Overall vibration energy
-- **Peak**: Maximum amplitude
-- **Crest Factor**: Peak/RMS ratio (bearing faults spike)
+```mermaid
+graph LR
+    A[3-axis raw<br/>ax, ay, az] --> B[Magnitude]
 
-**Aggregation window:** 10 seconds (100 samples @ 10 Hz)
+    B --> C["RMS<br/>√(x² + y² + z²)/3"]
+    B --> D["Peak<br/>max(|x|, |y|, |z|)"]
 
-**Published statistics per window:**
-- Average: mean(rms), mean(peak), mean(crest)
-- Maximum: max(rms), max(peak), max(crest)
-- Sample count: 100 samples per summary
+    C --> E[Crest Factor<br/>peak / RMS]
+    D --> E
 
-**Why aggregate:**
-- Reduces MQTT traffic (1 msg/10s vs 10 msg/s)
-- Operator sees trends, not noise
-- Alarms persist long enough to notice
-
----
-
-## Core Algorithm
-
-### State Machine
-
-```
-NORMAL → (outlier detected) → ALARM
-ALARM → (auto-freeze) → FROZEN
-FROZEN → (operator labels) → NORMAL + retrain
-FROZEN → (operator discards) → NORMAL
+    E --> F["3D vector<br/>[rms, peak, crest]"]
 ```
 
-**NORMAL state:**
-- Collects samples in ring buffer (100 samples)
-- Every 10s: compute statistics, publish summary
-- Check if current window is outlier
-- If outlier: transition to ALARM
+**Window:** 100 samples = 10 seconds @ 10 Hz
 
-**ALARM state:**
-- Freeze current buffer (mark immutable)
-- Publish alarm message with frozen statistics
-- Transition to FROZEN immediately
+**Why these features:**
+- RMS: Overall vibration energy
+- Peak: Maximum amplitude (bearing impacts spike)
+- Crest: Impulsiveness indicator (>2.5 = fault)
 
-**FROZEN state:**
-- Buffer held indefinitely
-- Wait for operator MQTT command: label or discard
-- No sampling (device pauses data collection)
-- On label: retrain model, clear buffer, resume
-- On discard: clear buffer, resume
+## Clustering Algorithm
 
-### Idle Detection
+```mermaid
+graph TD
+    A[New sample x] --> B[Find nearest cluster]
 
-**Problem:** Alarms trigger during operation, but operators inspect during downtime.
+    B --> C{Distance > threshold?}
+    C -->|Yes| D[Trigger alarm]
+    C -->|No| E[Update centroid]
 
-**Solution:** Hold alarm state after motor stops, allowing labeling at convenience.
+    E --> F["EMA update<br/>c_new = c_old + α(x - c_old)"]
 
-**Detection criteria:**
-- RMS < 0.5 m/s² (minimal vibration)
-- Current < 0.1 A (if current sensor available)
-- Consecutive 10 samples (1 second @ 10 Hz)
+    F --> G["α = learning_rate / (1 + 0.01 × count)"]
 
-**State transitions:**
-```
-FROZEN + motor running  → operator must respond
-FROZEN + motor stops    → FROZEN_IDLE (hold indefinitely)
-FROZEN_IDLE + label     → NORMAL (resume)
-FROZEN_IDLE + motor on  → FROZEN (back to active alarm)
+    G --> H[Update inertia<br/>variance within cluster]
 ```
 
-**Real scenario:**
-1. 2:00 PM - Alarm triggers during production
-2. 5:00 PM - Motor stops for shift change
-3. 5:01 PM - System detects idle → FROZEN_IDLE
-4. 5:30 PM - Operator inspects bearing (motor off)
-5. 6:00 PM - Operator labels fault
-6. Next day - Motor restarts, system resumes monitoring
-
-**Implementation:**
-```c
-void kmeans_update_idle(kmeans_model_t* model,
-                       fixed_t rms,
-                       fixed_t current);
-
-bool kmeans_is_idle(const kmeans_model_t* model);
+**Update rule:**
+```
+α = base_lr / (1 + 0.01 × count)
+c_new = c_old + α(x - c_old)
 ```
 
-**Why this matters:** Operators work on schedules, not milliseconds. Physical inspection requires motor shutdown. Alarms must persist across shifts.
+Learning rate decays as cluster matures.
 
-### Outlier Detection
+## Outlier Detection
 
-**Method:** Distance-based threshold
+```mermaid
+graph LR
+    A[Sample x] --> B[Distance to nearest cluster]
+    B --> C{d > 2 × radius?}
 
-```c
-// Compute distance from nearest cluster
-fixed_t dist = distance_to_nearest_cluster(features);
+    C -->|Yes| D[OUTLIER<br/>Freeze buffer]
+    C -->|No| E[NORMAL<br/>Update cluster]
 
-// Get cluster radius (average inertia)
-fixed_t threshold = cluster_radius * 2.0f;
-
-// Outlier if distance > 2× normal
-if (dist > threshold) {
-    trigger_alarm();
-}
+    D --> F[Wait for operator]
+    F -->|Label| G[New cluster from x]
+    F -->|Discard| H[Clear buffer]
 ```
 
-**Threshold tuning:** Adjustable via MQTT command
-- Default: 2× cluster radius
-- Conservative: 3× (fewer false alarms)
-- Aggressive: 1.5× (more sensitive)
+**Threshold:** 2.0× cluster radius (adjustable 1.5-5.0)
 
-### Ring Buffer
+## Idle Detection
 
-**Size:** 100 samples (10 seconds @ 10 Hz)
+```mermaid
+graph TD
+    A[Every sample] --> B{RMS < 0.5 m/s²?}
+    B -->|Yes| C{Current < 0.1 A?}
+    B -->|No| D[Active: Reset counter]
 
-**Implementation:**
-```c
-typedef struct {
-    fixed_t samples[100][MAX_FEATURES];
-    uint16_t head;
-    uint16_t count;
-    bool frozen;
-} ring_buffer_t;
+    C -->|Yes| E[Idle counter++]
+    C -->|No| D
+
+    E --> F{Counter >= 10?}
+    F -->|Yes| G[FROZEN → FROZEN_IDLE]
+    F -->|No| H[Keep counting]
+
+    D --> I{Was FROZEN_IDLE?}
+    I -->|Yes| J[FROZEN_IDLE → FROZEN]
+    I -->|No| K[Stay in current state]
 ```
 
-**Normal operation:**
-- Continuously overwrites oldest samples
-- Compute statistics every 100 samples
+**Purpose:** Alarm persists after motor stops. Operator labels during scheduled downtime.
 
-**On alarm:**
-- Mark buffer as frozen
-- Head pointer stops advancing
-- Samples preserved until operator acts
+## MQTT Schema
 
----
+```mermaid
+sequenceDiagram
+    participant Device
+    participant Broker
+    participant SCADA
 
-## MQTT Integration
+    Note over Device: Every 10 seconds
+    Device->>Broker: sensor/{id}/data
+    Note right of Device: {cluster, rms_avg, peak_avg, ...}
 
-### Topic Structure
+    Broker->>SCADA: Forward message
 
+    Note over SCADA: Operator inspects
+    SCADA->>Broker: tinyol/{id}/label
+    Note left of SCADA: {label: "bearing_fault"}
+
+    Broker->>Device: Forward command
+
+    Note over Device: Create cluster
+    Device->>Broker: sensor/{id}/data
+    Note right of Device: {cluster: 1, k: 2, ...}
 ```
-sensor/{device_id}/data       # Summary messages (every 10s)
-sensor/{device_id}/alarm      # Alarm notifications (on outlier)
-tinyol/{device_id}/label      # Operator labels (button press)
-tinyol/{device_id}/discard    # Operator discards (button press)
-tinyol/{device_id}/threshold  # Adjust sensitivity
-```
 
-### Flat JSON Schema
+**Topics:**
+- `sensor/{id}/data` - Summary (device → SCADA)
+- `tinyol/{id}/label` - Create cluster (SCADA → device)
+- `tinyol/{id}/discard` - Clear buffer (SCADA → device)
 
-**Normal message (every 10s):**
+## JSON Format
+
+**Normal summary:**
 ```json
 {
   "device_id": "tinyol_device1",
@@ -171,230 +200,140 @@ tinyol/{device_id}/threshold  # Adjust sensitivity
   "k": 1,
   "alarm_active": false,
   "frozen": false,
-  "sample_count": 100,
+  "idle": false,
   "rms_avg": 5.2,
   "rms_max": 6.1,
   "peak_avg": 9.1,
   "peak_max": 11.2,
   "crest_avg": 1.75,
-  "crest_max": 2.1,
-  "buffer_samples": 0,
-  "timestamp": 123456
+  "buffer_samples": 0
 }
 ```
 
-**Alarm message (immediate on outlier):**
+**Alarm state:**
 ```json
 {
-  "device_id": "tinyol_device1",
-  "cluster": -1,
-  "label": "unknown",
-  "k": 2,
   "alarm_active": true,
   "frozen": true,
-  "sample_count": 100,
-  "rms_avg": 12.3,
-  "rms_max": 15.7,
-  "peak_avg": 18.5,
-  "peak_max": 22.1,
-  "crest_avg": 2.45,
-  "crest_max": 3.2,
-  "buffer_samples": 100,
-  "timestamp": 123456
+  "cluster": -1,
+  "label": "unknown",
+  "buffer_samples": 100
 }
 ```
 
-**Label command (operator → device):**
+**Idle state:**
 ```json
 {
-  "label": "outer_race_fault"
+  "alarm_active": true,
+  "frozen": true,
+  "idle": true,
+  "rms_avg": 0.3
 }
 ```
 
-Device uses frozen buffer as seed for new cluster.
+## Memory Layout
 
-**Discard command (operator → device):**
-```json
-{
-  "discard": true
-}
+```mermaid
+graph TD
+    A[Model: ~2.5 KB] --> B[Clusters: ~1 KB]
+    A --> C[Buffer: 1.2 KB]
+    A --> D[Metadata: ~300 B]
+
+    B --> E[16 clusters × 3 features × 4 bytes]
+    C --> F[100 samples × 3 features × 4 bytes]
 ```
 
-Device clears buffer, resumes normal operation.
+**Breakdown:**
+- Clusters: K × D × 4 bytes (max 16 × 64 = 4.2 KB)
+- Buffer: 100 × D × 4 bytes (100 × 3 = 1.2 KB)
+- Total: <2.5 KB for typical config
 
----
+## Decision Tree
+
+```mermaid
+graph TD
+    A[Sample arrives] --> B{Frozen?}
+    B -->|Yes| C[Reject]
+    B -->|No| D{Buffer >= 10?}
+
+    D -->|No| E[Add to buffer]
+    D -->|Yes| F{Outlier?}
+
+    F -->|Yes| G[Freeze + Alarm]
+    F -->|No| H[Update cluster]
+
+    H --> I[Publish summary?]
+    I -->|Every 10s| J[MQTT publish]
+    I -->|No| K[Continue]
+```
 
 ## Platform Abstraction
 
-**ESP32 DEVKIT V1 (Xtensa LX6):**
-```cpp
-void platform_init() {
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
-  Wire.begin(21, 22);  // SDA, SCL explicit
-  pinMode(LED_BUILTIN, OUTPUT);
-}
+```mermaid
+graph LR
+    A[Core algorithm<br/>streaming_kmeans.c] --> B[Platform layer<br/>core.ino]
+
+    B --> C[ESP32<br/>Xtensa LX6]
+    B --> D[RP2350<br/>ARM Cortex-M33]
+
+    C --> E[Wire.begin<br/>GPIO 21/22]
+    D --> F[Wire.begin<br/>GPIO 4/5]
+
+    E --> G[WiFi + MQTT]
+    F --> G
 ```
 
-**RP2040 Pico 2W (ARM Cortex-M33):**
-```cpp
-void platform_init() {
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
-  Wire.begin();  // Uses default GP4/GP5
-  pinMode(LED_BUILTIN, OUTPUT);
-}
-```
-
-Core algorithm identical. Platform layer handles I/O differences.
-
----
-
-## FUXA SCADA Integration
-
-### Dashboard Layout
-
-```
-┌─────────────────────────────────────────┐
-│  Motor Health Monitor                   │
-├─────────────────────────────────────────┤
-│  [ALARM BANNER - Red, flashing]         │  ← Only visible when alarm_active
-│  Anomaly detected: RMS 12.3 m/s²        │
-│  [Freeze] [Discard]                     │
-├─────────────────────────────────────────┤
-│  Current Status:                        │
-│  Cluster: [0] "normal"                  │
-│  K: 2 clusters                          │
-│                                         │
-│  Live Features (10s average):           │
-│  RMS:   5.2 m/s²  [gauge]              │
-│  Peak:  9.1 m/s²  [gauge]              │
-│  Crest: 1.75      [gauge]              │
-│                                         │
-│  History (last 20 summaries):           │
-│  [Table: timestamp | cluster | rms_avg] │
-│                                         │
-│  Frozen Data (when alarm active):       │
-│  [Table: 100 samples from buffer]       │
-│                                         │
-│  Label Input:                           │
-│  [Input: "fault_name"] [Button: Label]  │
-└─────────────────────────────────────────┘
-```
-
-### Operator Workflow
-
-**1. Normal operation:**
-- Monitor gauges and table
-- RMS stays around 5 m/s²
-- No action needed
-
-**2. Anomaly detected:**
-- Red banner appears: "Anomaly detected"
-- Gauges show frozen values (RMS 12.3 m/s²)
-- Table shows 100 buffered samples
-- Device stops collecting new data
-
-**3. Operator inspects:**
-- Walks to motor
-- Checks bearings, listens for noise
-- Checks temperature, vibration
-- Takes hours if needed (no timeout)
-
-**4. Operator decides:**
-- **If real fault:** Type label "bearing_fault", click "Label"
-- **If false alarm:** Click "Discard"
-
-**5. Device response:**
-- On label: Creates new cluster, retrains on buffer
-- On discard: Clears buffer, resumes normal sampling
-- Banner disappears, gauges update
-
-### MQTT Configuration
-
-**FUXA Device:**
-- Broker: `localhost:1883`
-- Subscribe: `sensor/#`
-- QoS: 0
-
-**Tag mapping (flat JSON):**
-| Tag | JSON Path | Type |
-|-----|-----------|------|
-| alarm_active | `alarm_active` | bool |
-| frozen | `frozen` | bool |
-| cluster | `cluster` | int |
-| label | `label` | string |
-| rms_avg | `rms_avg` | float |
-| rms_max | `rms_max` | float |
-| buffer_samples | `buffer_samples` | int |
-
-**Button actions:**
-- "Label" → Publish `tinyol/{device_id}/label` with `{"label":"${input_value}"}`
-- "Discard" → Publish `tinyol/{device_id}/discard` with `{"discard":true}`
-
----
+**Same algorithm, different I/O.**
 
 ## Performance
 
-**Memory footprint:**
-- Model: <1 KB (16 clusters × 3 features × 4 bytes)
-- Ring buffer: 1.2 KB (100 samples × 3 features × 4 bytes)
-- Total: ~2.5 KB RAM
+| Metric | Value |
+|--------|-------|
+| Loop latency | <20 ms |
+| Feature extraction | 0.08 ms |
+| Outlier check | 0.28 ms |
+| MQTT publish | 10-15 ms |
+| Memory | 2.5 KB |
+| Traffic | 9 KB/hour |
 
-**Latency:**
-- Feature extraction: 0.08 ms
-- Outlier detection: 0.28 ms
-- MQTT publish: 10-15 ms
-- Total loop: <20 ms
+## Operator Workflow
 
-**MQTT traffic:**
-- Normal: 1 message per 10 seconds
-- Alarm: 1 additional message on detection
-- Total: ~9 KB/hour (vs 3.6 MB/hour at 10 Hz)
+```mermaid
+graph TD
+    A[Monitor SCADA] --> B{Alarm?}
+    B -->|No| A
+    B -->|Yes| C[Walk to motor]
 
----
+    C --> D[Physical inspection]
+    D --> E{Real fault?}
 
-## Key Design Decisions
+    E -->|Yes| F[Return to SCADA]
+    F --> G[Type label]
+    G --> H[Click Label]
 
-### Why 10-second summaries?
+    E -->|No| I[Click Discard]
 
-**Not real-time critical:** Bearing faults develop over days/weeks
-**Operator response time:** Humans take minutes to act
-**MQTT efficiency:** 360× less traffic vs 10 Hz streaming
-**Trend visibility:** Averages filter sensor noise
+    H --> J[Device creates cluster]
+    I --> J
+    J --> K[Resume monitoring]
+```
 
-### Why unlimited freeze time?
+**Key insight:** No timeout. Operator has unlimited time.
 
-**Physical inspection required:** Operator must walk to motor
-**Shift changes:** May need next operator to investigate
-**Documentation:** May need photos, measurements
-**Pragmatic:** Can't force 5-minute deadline on factory floor
+## Why This Works
 
-### Why flat JSON?
+**Traditional approach:**
+1. Collect months of data
+2. Label every sample
+3. Train model
+4. Deploy
+5. Model is frozen
 
-**SCADA compatibility:** Not all systems parse nested objects
-**Tag mapping simplicity:** Direct path to values
-**Debugging ease:** Easier to log and inspect
-**Industry standard:** OT systems expect flat structures
+**TinyOL-HITL:**
+1. Deploy K=1
+2. Discover fault
+3. Operator labels
+4. K grows
+5. Model adapts
 
----
-
-## Phase 2: Current Sensing (Future)
-
-**When to add:** After vibration-only baseline validated
-
-**Hardware:**
-- ZMCT103C current transformers (3× for L1, L2, L3)
-- 100Ω burden resistors
-- ESP32 ADC pins: 36, 39, 34
-
-**Feature expansion:**
-- Current: [0-2] = Vibration (RMS, Peak, Crest)
-- New: [3-6] = I_L1, I_L2, I_L3, Imbalance
-
-**JSON schema update:**
-Add fields: `current_l1_avg`, `current_l1_max`, etc.
-Increment `schema_version` to 2.
-
-**Expected improvement:**
-- Bearing faults: Minimal (vibration sufficient)
-- Electrical faults: Significant (loose connections, phase imbalance)
-- Rotor bar defects: High (current signature analysis)
+**Result:** Days to deployment vs months.

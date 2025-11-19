@@ -21,6 +21,22 @@ Start with K=1. Device learns automatically. Operator labels outliers only.
 
 Arduino library. Any board (ESP32, RP2350). MQTT to FUXA SCADA. <1KB memory.
 
+```mermaid
+graph LR
+    A[Predictive maintenance<br/>27% adoption] --> B[Three barriers]
+    B --> C[ML expertise shortage]
+    B --> D[Vendor lock-in]
+    B --> E[Integration complexity]
+
+    C --> F[TinyOL-HITL:<br/>No training needed]
+    D --> F
+    E --> F
+
+    F --> G[Start K=1<br/>Grow organically]
+    F --> H[Open-standard<br/>MQTT/Arduino]
+    F --> I[SCADA ready]
+```
+
 ## Quick Start
 
 **1. Install Arduino IDE** (5 min)
@@ -74,7 +90,50 @@ docker run -d -p 1883:1883 --name mosquitto eclipse-mosquitto
 # Operator labels via: tinyol/device1/label
 ```
 
+## Workflow
+
+```mermaid
+stateDiagram-v2
+    [*] --> Normal: K=1 baseline
+    Normal --> Alarm: Outlier detected
+    Alarm --> Frozen: Auto-freeze
+
+    Frozen --> FrozenIdle: Motor stops
+    FrozenIdle --> Frozen: Motor restarts
+
+    Frozen --> Normal: Operator labels
+    FrozenIdle --> Normal: Operator labels
+
+    Frozen --> Normal: Operator discards
+    FrozenIdle --> Normal: Operator discards
+
+    Normal --> [*]
+```
+
 ## How It Works
+
+```mermaid
+sequenceDiagram
+    participant Device
+    participant Buffer
+    participant Operator
+    participant SCADA
+
+    Note over Device: Day 1: Everything = "normal"
+    Device->>Buffer: Collect samples (10 Hz)
+    Buffer->>Device: Check: outlier?
+
+    Note over Device: Outlier detected!
+    Device->>SCADA: 🔴 ALARM
+    Device->>Buffer: FREEZE
+
+    Note over Operator: Inspect motor physically
+    Operator->>SCADA: Label: "bearing_fault"
+    SCADA->>Device: Create cluster
+
+    Note over Device: K = 1 → 2
+    Device->>Buffer: Resume sampling
+```
 
 **Unsupervised learning:** Device clusters vibration patterns automatically. No training needed.
 

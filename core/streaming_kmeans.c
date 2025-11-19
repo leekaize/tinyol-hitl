@@ -1,13 +1,23 @@
 /**
  * @file streaming_kmeans.c
  * @brief Label-driven incremental clustering with freeze-on-alarm
+ * 
+ * Algorithm: Exponential moving average (EMA) k-means
+ * Memory: K × D × 4 bytes (max 4.2KB for K=16, D=64)
+ * Precision: Q16.16 fixed-point
+ * 
+ * Key features:
+ * - Starts with K=1 (no pre-training)
+ * - Operator labels outliers to create new clusters
+ * - Freeze-on-alarm workflow for physical inspection
+ * - Idle detection persists alarms across shifts
  */
 
 #include "streaming_kmeans.h"
 #include <string.h>
 #include <stdlib.h>
 
-// Simple PRNG for initialization
+// Simple PRNG for initialization (not cryptographically secure)
 uint32_t rng_state = 12345;
 
 fixed_t rand_fixed(fixed_t min, fixed_t max) {
@@ -22,11 +32,11 @@ bool kmeans_init(kmeans_model_t* model, uint8_t feature_dim, float learning_rate
     }
 
     memset(model, 0, sizeof(kmeans_model_t));
-    model->k = 1;
+    model->k = 1;  // Start with single "normal" cluster
     model->feature_dim = feature_dim;
     model->learning_rate = FLOAT_TO_FIXED(learning_rate);
     model->state = STATE_NORMAL;
-    model->outlier_threshold = FLOAT_TO_FIXED(2.0f);
+    model->outlier_threshold = FLOAT_TO_FIXED(2.0f);  // 2× cluster radius
     model->idle_count = 0;
     model->last_rms = 0;
     model->last_current = 0;
@@ -37,7 +47,7 @@ bool kmeans_init(kmeans_model_t* model, uint8_t feature_dim, float learning_rate
     model->clusters[0].label[MAX_LABEL_LENGTH - 1] = '\0';
     model->clusters[0].active = true;
     model->clusters[0].count = 0;
-    model->clusters[0].grace_remaining = 0;
+    model->clusters[0].inertia = FLOAT_TO_FIXED(1.0f);  // Fixed baseline for stable threshold
 
     // Initialize ring buffer
     model->buffer.head = 0;
@@ -48,6 +58,10 @@ bool kmeans_init(kmeans_model_t* model, uint8_t feature_dim, float learning_rate
     return true;
 }
 
+/**
+ * Compute squared Euclidean distance (avoids sqrt for speed)
+ * Distance² = Σ(a[i] - b[i])²
+ */
 static fixed_t distance_squared(const fixed_t* a, const fixed_t* b, uint8_t dim) {
     int64_t sum = 0;
     for (uint8_t i = 0; i < dim; i++) {
@@ -57,6 +71,11 @@ static fixed_t distance_squared(const fixed_t* a, const fixed_t* b, uint8_t dim)
     return (fixed_t)sum;
 }
 
+/**
+ * Find nearest cluster to point
+ * @param out_distance Optional output for distance to nearest cluster
+ * @return Cluster ID (0 to k-1)
+ */
 static uint8_t find_nearest_cluster(const kmeans_model_t* model, const fixed_t* point, fixed_t* out_distance) {
     uint8_t nearest = 0;
     fixed_t min_dist = distance_squared(point, model->clusters[0].centroid, model->feature_dim);
@@ -77,10 +96,13 @@ static uint8_t find_nearest_cluster(const kmeans_model_t* model, const fixed_t* 
     return nearest;
 }
 
+/**
+ * Add sample to ring buffer (circular overwrite)
+ * Skipped if buffer is frozen
+ */
 static void buffer_add_sample(ring_buffer_t* buffer, const fixed_t* point, uint8_t feature_dim) {
     if (buffer->frozen) return;
 
-    // Copy sample to buffer
     memcpy(buffer->samples[buffer->head], point, feature_dim * sizeof(fixed_t));
     
     buffer->head = (buffer->head + 1) % RING_BUFFER_SIZE;
@@ -93,7 +115,7 @@ int8_t kmeans_update(kmeans_model_t* model, const fixed_t* point) {
     if (!model->initialized) return -1;
     if (model->state == STATE_FROZEN || model->state == STATE_FROZEN_IDLE) return -1;
 
-    // Add to ring buffer
+    // Add to ring buffer for alarm detection
     buffer_add_sample(&model->buffer, point, model->feature_dim);
 
     // Find nearest cluster
@@ -101,35 +123,30 @@ int8_t kmeans_update(kmeans_model_t* model, const fixed_t* point) {
     uint8_t cluster_id = find_nearest_cluster(model, point, &distance);
     model->last_distance = distance;
 
-    // Check if outlier (only after buffer has enough samples)
+    // Check outlier after buffer has baseline (10 samples = 1 second @ 10Hz)
     if (model->buffer.count >= 10 && kmeans_is_outlier(model, point)) {
         kmeans_alarm(model);
-        return -1;
+        return -1;  // Return -1 when frozen
     }
 
     cluster_t* cluster = &model->clusters[cluster_id];
 
-    // Only update centroid if THIS cluster has no grace period
-    if (cluster->grace_remaining == 0) {
-        float decay = 1.0f + 0.01f * cluster->count;
-        float alpha_f = FIXED_TO_FLOAT(model->learning_rate) / decay;
-        fixed_t alpha = FLOAT_TO_FIXED(alpha_f);
+    // Update centroid using exponential moving average (EMA)
+    // α = learning_rate / (1 + 0.01 × count)
+    // c_new = c_old + α(x - c_old)
+    float decay = 1.0f + 0.01f * cluster->count;
+    float alpha_f = FIXED_TO_FLOAT(model->learning_rate) / decay;
+    fixed_t alpha = FLOAT_TO_FIXED(alpha_f);
 
-        for (uint8_t i = 0; i < model->feature_dim; i++) {
-            fixed_t diff = point[i] - cluster->centroid[i];
-            cluster->centroid[i] += FIXED_MUL(alpha, diff);
-        }
-        
-        cluster->inertia += FIXED_MUL(alpha, distance - cluster->inertia);
+    for (uint8_t i = 0; i < model->feature_dim; i++) {
+        fixed_t diff = point[i] - cluster->centroid[i];
+        cluster->centroid[i] += FIXED_MUL(alpha, diff);
     }
-
+    
+    // Update inertia (within-cluster variance) using EMA
+    cluster->inertia += FIXED_MUL(alpha, distance - cluster->inertia);
     cluster->count++;
     model->total_points++;
-
-    // Decrement grace period
-    if (cluster->grace_remaining > 0) {
-        cluster->grace_remaining--;
-    }
 
     return cluster_id;
 }
@@ -139,13 +156,16 @@ uint8_t kmeans_predict(const kmeans_model_t* model, const fixed_t* point) {
     return find_nearest_cluster(model, point, NULL);
 }
 
+/**
+ * Check if point is an outlier
+ * Outlier = distance > threshold × cluster_radius
+ * Default threshold = 2.0
+ */
 bool kmeans_is_outlier(const kmeans_model_t* model, const fixed_t* point) {
     if (!model->initialized || model->k == 0) return false;
 
     fixed_t distance;
     uint8_t nearest = find_nearest_cluster(model, point, &distance);
-    
-    // Grace period only affects centroid updates, not outlier detection
     
     fixed_t radius = model->clusters[nearest].inertia;
     if (radius == 0) {
@@ -156,6 +176,10 @@ bool kmeans_is_outlier(const kmeans_model_t* model, const fixed_t* point) {
     return distance > threshold;
 }
 
+/**
+ * Trigger alarm state - freezes buffer and stops sampling
+ * Operator must label or discard to resume
+ */
 void kmeans_alarm(kmeans_model_t* model) {
     if (model->state != STATE_NORMAL) return;
 
@@ -163,6 +187,10 @@ void kmeans_alarm(kmeans_model_t* model) {
     model->buffer.frozen = true;
 }
 
+/**
+ * Discard frozen buffer (false alarm)
+ * Clears buffer and resumes normal sampling
+ */
 void kmeans_discard(kmeans_model_t* model) {
     if (model->state != STATE_FROZEN && model->state != STATE_FROZEN_IDLE) return;
 
@@ -172,6 +200,12 @@ void kmeans_discard(kmeans_model_t* model) {
     model->buffer.count = 0;
 }
 
+/**
+ * Add new cluster from frozen buffer (operator labeled outlier)
+ * Uses last sample (outlier trigger point) as centroid
+ * @param label Fault name from operator (e.g. "bearing_outer_race")
+ * @return true if cluster created, false if failed
+ */
 bool kmeans_add_cluster(kmeans_model_t* model, const char* label) {
     if (!model->initialized) return false;
     if (model->k >= MAX_CLUSTERS) return false;
@@ -179,43 +213,34 @@ bool kmeans_add_cluster(kmeans_model_t* model, const char* label) {
     if (model->state != STATE_FROZEN && model->state != STATE_FROZEN_IDLE) return false;
     if (model->buffer.count == 0) return false;
 
-    // Check for duplicate label
+    // Check duplicate label
     for (uint8_t i = 0; i < model->k; i++) {
         if (strcmp(model->clusters[i].label, label) == 0) {
             return false;
         }
     }
 
-    // Compute centroid from frozen buffer
     cluster_t* new_cluster = &model->clusters[model->k];
-    memset(new_cluster->centroid, 0, model->feature_dim * sizeof(fixed_t));
 
-    for (uint16_t s = 0; s < model->buffer.count; s++) {
-        for (uint8_t f = 0; f < model->feature_dim; f++) {
-            new_cluster->centroid[f] += model->buffer.samples[s][f] / model->buffer.count;
-        }
-    }
+    // Use last sample (outlier that triggered alarm) as centroid
+    // Operator labels based on what they see NOW, not buffer average
+    uint16_t last_idx = (model->buffer.head > 0) ? 
+                        model->buffer.head - 1 : 
+                        model->buffer.count - 1;
 
-    // Calculate initial inertia from buffer variance
-    fixed_t initial_inertia = 0;
-    for (uint16_t s = 0; s < model->buffer.count; s++) {
-        fixed_t dist = distance_squared(model->buffer.samples[s], 
-                                       new_cluster->centroid, 
-                                       model->feature_dim);
-        initial_inertia += dist / model->buffer.count;
-    }
+    memcpy(new_cluster->centroid, 
+           model->buffer.samples[last_idx], 
+           model->feature_dim * sizeof(fixed_t));
 
     strncpy(new_cluster->label, label, MAX_LABEL_LENGTH - 1);
     new_cluster->label[MAX_LABEL_LENGTH - 1] = '\0';
     new_cluster->active = true;
-    new_cluster->count = model->buffer.count;
-    new_cluster->inertia = initial_inertia;
-    new_cluster->grace_remaining = 50;
+    new_cluster->count = 1;
+    new_cluster->inertia = FLOAT_TO_FIXED(1.0f);  // Fixed baseline
 
     model->k++;
 
-    // Clear buffer and resume
-    kmeans_discard(model);
+    kmeans_discard(model);  // Clear buffer and resume
 
     return true;
 }
@@ -278,11 +303,7 @@ bool kmeans_correct(kmeans_model_t* model,
     if (old_cluster >= model->k || new_cluster >= model->k) return false;
     if (old_cluster == new_cluster) return true;
 
-    // Corrections bypass grace period - operator override
-    model->clusters[old_cluster].grace_remaining = 0;
-    model->clusters[new_cluster].grace_remaining = 0;
-
-    // Repel from old cluster
+    // Repel from old
     cluster_t* old = &model->clusters[old_cluster];
     fixed_t repel_rate = FLOAT_TO_FIXED(0.1f);
 
@@ -293,7 +314,7 @@ bool kmeans_correct(kmeans_model_t* model,
 
     if (old->count > 0) old->count--;
 
-    // Attract to new cluster
+    // Attract to new
     cluster_t* new = &model->clusters[new_cluster];
     fixed_t attract_rate = FLOAT_TO_FIXED(0.2f);
 
@@ -320,10 +341,8 @@ void kmeans_update_idle(kmeans_model_t* model, fixed_t rms, fixed_t current) {
     model->last_rms = rms;
     model->last_current = current;
     
-    // Check if below idle thresholds
     bool is_idle_now = (rms < IDLE_RMS_THRESHOLD);
     
-    // If current sensor available, include it
     if (current > 0) {
         is_idle_now = is_idle_now && (current < IDLE_CURRENT_THRESHOLD);
     }
@@ -331,17 +350,14 @@ void kmeans_update_idle(kmeans_model_t* model, fixed_t rms, fixed_t current) {
     if (is_idle_now) {
         model->idle_count++;
         
-        // After consecutive idle samples, transition to FROZEN_IDLE
         if (model->idle_count >= IDLE_CONSECUTIVE_SAMPLES) {
             if (model->state == STATE_FROZEN) {
                 model->state = STATE_FROZEN_IDLE;
             }
         }
     } else {
-        // Reset idle counter if activity detected
         model->idle_count = 0;
         
-        // If was idle and now active, stay FROZEN (don't auto-resume)
         if (model->state == STATE_FROZEN_IDLE) {
             model->state = STATE_FROZEN;
         }
