@@ -1,0 +1,43 @@
+name: Deploy Slides
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'slidev/**'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        working-directory: slidev
+        run: npm install
+
+      - name: Build slides
+        working-directory: slidev
+        run: npm run build -- --base /tinyol-hitl/
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: slidev/dist
+
+      - name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@v4
