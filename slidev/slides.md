@@ -16,256 +16,278 @@ mdc: true
 
 **Tiny** Online Learning with **Human-in-the-Loop**
 
-Unsupervised TinyML Fault Discovery with Operator Guidance for Industrial Condition Monitoring
+<div class="text-xl mt-4">
+Unsupervised Fault Discovery for Industrial Condition Monitoring
+</div>
 
-<div class="pt-12">
+<div class="pt-8">
   <span class="px-2 py-1 rounded bg-blue-500 text-white">
     Lee Kai Ze • Swinburne University of Technology
   </span>
 </div>
 
+<div class="pt-4 text-sm opacity-75">
+Supervised by Dr Hudyjaya Siswoyo Jo
+</div>
+
 <!--
-Let me break down what this framework does:
+Breaking down the title:
+- **Tiny** = Runs on microcontrollers (<5KB RAM)
+- **Online Learning** = Learns continuously from streaming data
+- **Human-in-the-Loop** = Operators label faults as discovered
 
-**Tiny** = Runs on microcontrollers with <5KB RAM
-**Online Learning** = Learns continuously, no pre-training needed
-**Human-in-the-Loop** = Operators label faults as they discover them
-
-The result: Deploy on Day 1, system learns your specific machine's behavior, grows smarter with each fault you encounter.
+The result: Deploy immediately. No pre-training. System learns your specific machine.
 -->
 
 ---
-layout: two-cols
----
 
-# The Problem
+# The Industrial Reality
+
+<div class="grid grid-cols-2 gap-8">
+<div>
+
+### PdM Adoption Barriers
 
 <v-clicks>
 
-- **27%** PdM adoption rate
-- **74%** pilots never reach production
-- **24%** cite expertise shortage
-- **80%** want open standards
+- **27%** actual PdM adoption rate
+- **74%** Industry 4.0 pilots never scale
+- **24%** cite expertise as primary barrier
+- **80%** want open standards, avoid lock-in
 
 </v-clicks>
 
-::right::
-
-<div class="h-full flex items-center justify-center">
-<div class="w-64">
+</div>
+<div>
 
 ```mermaid
-pie title Why PdM Fails
+pie title Why PdM Fails to Scale
     "Expertise Gap" : 35
     "Vendor Lock-in" : 30
     "Integration Cost" : 25
-    "Other" : 10
+    "Data Requirements" : 10
 ```
 
 </div>
 </div>
 
-<!--
-Predictive maintenance promises 70-80% failure prevention. Yet only 27% adopt it.
+<div class="text-sm mt-4 opacity-75" v-click>
+Sources: McKinsey 2021, MaintainX 2025, PwC 2018
+</div>
 
-Three barriers block deployment:
-1. ML expertise costs $90-195K/year with 142-day hiring cycles
-2. Commercial solutions lock you into ecosystems ($50-200/device/year)
-3. Legacy systems (62.5%) need expensive protocol conversion
+<!--
+Despite 70-80% failure prevention potential, only 27% adopt PdM.
+
+Three barriers:
+1. ML expertise costs $90-195K/year, 142-day hiring cycles
+2. Commercial solutions: $50-200/device/year licensing
+3. Legacy systems need expensive protocol conversion
 -->
 
 ---
 
-# State of the Art
+# State of the Art: TinyML for PdM
 
-| Approach | Labels Needed | On-Device | Open Standard |
-|----------|---------------|-----------|---------------|
-| Cloud ML (AWS IoT) | ✓ Thousands | ✗ | ✗ |
-| TinyOL [Ren 2021] | ✓ Pre-trained | ✓ | ✗ |
-| Isolation Forest | ✗ | ✗ | ✗ |
-| BIRCH Clustering | ✗ | ✓ | ✗ |
-| **TinyOL-HITL** | **✗ Zero** | **✓** | **✓** |
+<div class="text-sm">
 
-<div class="text-sm text-gray-500 mt-4">
+| Approach | Pre-Training | Memory | On-Device Learning | Platform |
+|----------|-------------|--------|-------------------|----------|
+| TinyOL (Ren 2021) | ✓ Autoencoder | ~100KB | Fine-tune last layer | Cortex-M4 |
+| MCUNetV3 (Lin 2022) | ✓ CNN | 256KB | Sparse backprop | Cortex-M7 |
+| TinyTL (Cai 2020) | ✓ Frozen weights | ~50KB | Bias-only updates | Cortex-M4 |
+| Cloud ML | ✓ Large datasets | N/A | Server-side | N/A |
+| **TinyOL-HITL** | **✗ None** | **2.5KB** | **Label-driven K++** | **Multi-arch** |
 
-**TO-DO:** Add exact benchmark accuracies:
-- Rosa et al. 2024 (CWRU CNN baseline)
-- Yoo & Baek 2023 (Lite CNN: 99.86%)
-- Amruthnath & Gupta 2018 (K-means comparison)
-
-</div>
-
-<!--
-Current TinyML solutions like TinyOL require pre-trained models. Unsupervised methods like Isolation Forest detect anomalies but don't classify them.
-
-Our contribution: Start unsupervised, grow supervised through operator feedback.
--->
-
----
-
-# Why Unsupervised?
-
-<div class="w-full flex justify-center">
-<div class="w-140">
-
-```mermaid
-graph LR
-    A[New Machine] --> B{Historical Data?}
-    B -->|Yes| C[Train Model]
-    B -->|No| D[❌ Can't Deploy]
-
-    C --> E{Fault Data?}
-    E -->|Yes| F[Supervised Learning]
-    E -->|No| G[❌ Incomplete Model]
-
-    D --> H[TinyOL-HITL]
-    G --> H
-    H --> I[✓ Deploy Immediately]
-```
-
-</div>
 </div>
 
 <v-click>
 
-**Reality check:**
-- MTBF often exceeds 10,000 hours
-- Rare faults = no training data
-- Each machine is unique
+### The Gap
+All existing TinyML solutions require **pre-trained models**.
+Real industrial deployment: **fault types unknown until discovered**.
 
 </v-click>
 
 <!--
-Industrial reality - you can't generate fault data without breaking machines.
+TinyOL was groundbreaking - first online learning on MCUs.
 
-Traditional ML needs thousands of labeled samples. But bearing MTBF is 10,000+ hours. You'd wait years to collect enough failures.
+But it still needs offline-trained autoencoder. You train on "normal" samples from a powerful machine, then fine-tune on device.
 
-TinyOL-HITL inverts this: deploy first, learn faults as operators discover them.
--->
+Problem: What if your machine's "normal" is different? What if new fault types emerge?
 
----
-layout: center
----
-
-# Research Setup
-
-<div class="w-160">
-
-```mermaid
-flowchart LR
-    subgraph Phase1[Phase 1: Baseline]
-        A[CWRU Dataset] --> B[4 Fault Classes]
-        B --> C[Streaming K-means]
-        C --> D[Accuracy Benchmark]
-    end
-
-    subgraph Phase2[Phase 2: Validation]
-        E[3-Phase Motor] --> F[Eccentric Weight]
-        F --> G[Live Detection]
-        G --> H[SCADA Display]
-    end
-
-    D --> E
-```
-
-</div>
-
-**Phase 1:** Prove unsupervised clustering works on standard benchmark
-**Phase 2:** Validate real-world UX with SCADA integration
-
----
-
-# Test Rig Configuration
-
-<div class="grid grid-cols-2 gap-8">
-
-<div>
-
-### Hardware
-| Component | Spec |
-|-----------|------|
-| Motor | 0.5 HP 3-phase, 1500 RPM |
-| MCU 1 | ESP32 DEVKIT V1 (Xtensa) |
-| MCU 2 | RP2350 Pico 2W (ARM) |
-| Sensor 1 | MPU6050 (±16g) |
-| Sensor 2 | ADXL345 (±16g) |
-
-</div>
-
-<div>
-
-### Fault Simulation
-| Condition | Method |
-|-----------|--------|
-| Baseline | No weights |
-| Mild unbalance | 50 g·mm eccentric |
-| Severe unbalance | 200 g·mm eccentric |
-| Speed variation | VFD: 25-60 Hz |
-
-</div>
-
-</div>
-
-<!--
-Two MCU architectures (Xtensa vs ARM) prove portability. Two sensor types eliminate sensor bias.
-
-Fault simulation uses non-destructive eccentric weights - repeatable without destroying bearings.
+TinyOL-HITL eliminates pre-training entirely.
 -->
 
 ---
 
-# Base Model Architecture
+# Why Unsupervised Start Matters
 
 <div class="flex justify-center">
 <div class="w-140">
 
 ```mermaid
 flowchart TB
-    subgraph Input
-        A[3-axis Accelerometer] --> B[Feature Extraction]
-    end
+    A[New Machine Deployed] --> B{Historical Fault Data?}
+    B -->|Yes| C[Train Supervised Model]
+    B -->|No| D[❌ Traditional ML Fails]
 
-    subgraph Features[3D Feature Vector]
-        B --> C[RMS]
-        B --> D[Peak]
-        B --> E[Crest Factor]
-    end
+    C --> E{All Fault Types Known?}
+    E -->|Yes| F[Deploy Static Model]
+    E -->|No| G[❌ Model Incomplete]
 
-    subgraph Model[Streaming K-means]
-        C & D & E --> F[Distance to Centroids]
-        F --> G{Outlier?}
-        G -->|No| H[Update Nearest]
-        G -->|Yes| I[Freeze + Alarm]
-    end
+    D --> H[TinyOL-HITL: Start K=1]
+    G --> H
 
-    subgraph HITL
-        I --> J[Operator Labels]
-        J --> K[New Cluster K++]
-    end
+    H --> I[Operator Labels As Discovered]
+    I --> J[K Grows: 1→2→3→N]
+    J --> K[✓ Model Adapts to Reality]
 ```
+
+</div>
+</div>
+
+<!--
+Bearing MTBF: 10,000+ hours. You'd wait years for labeled fault data.
+
+Traditional approach: Collect → Label → Train → Deploy → Hope faults match training.
+
+Our approach: Deploy → Discover → Label → Learn → Adapt continuously.
+-->
+
+---
+
+# Research Design
+
+<div class="flex justify-center">
+<div class="w-160">
+
+```mermaid
+flowchart LR
+    subgraph Phase1[Phase 1: Algorithm Validation]
+        A[CWRU Dataset] --> B[4 Fault Classes]
+        B --> C[Streaming K-means]
+        C --> D[Baseline Accuracy]
+    end
+
+    subgraph Phase2[Phase 2: Real-World UX]
+        E[3-Phase Motor] --> F[Fault Simulation]
+        F --> G[SCADA Dashboard]
+        G --> H[Operator Workflow]
+    end
+
+    D --> E
+```
+
+</div>
+</div>
+
+<div class="grid grid-cols-2 gap-4 mt-4 text-sm">
+<div>
+
+**Phase 1: CWRU Benchmark**
+- 4 classes: Normal, Ball, Inner, Outer
+- Time-domain features
+- Compare vs literature
+
+</div>
+<div>
+
+**Phase 2: Motor Test Rig**
+- 0.5 HP 3-phase motor
+- Eccentric weight faults
+- FUXA SCADA integration
 
 </div>
 </div>
 
 ---
 
-# TinyML Optimizations
+# Test Rig Configuration
 
 <div class="grid grid-cols-2 gap-8">
+<div>
 
+### Hardware Platform
+
+| Component | Model |
+|-----------|-------|
+| MCU 1 | ESP32 DEVKIT V1 (Xtensa) |
+| MCU 2 | RP2350 Pico 2W (ARM) |
+| Vibration | MPU6050 + ADXL345 |
+| Current | ZMCT103C × 3 phases |
+| Motor | 0.5 HP, 1500 RPM |
+| Control | VFD (0-60 Hz) |
+
+</div>
+<div>
+
+### Fault Simulation
+
+| Condition | Method |
+|-----------|--------|
+| Baseline | Balanced rotor |
+| Unbalance | 50-200 g·mm eccentric |
+| Speed var | VFD: 25, 40, 50, 60 Hz |
+
+**Why eccentric weight:**
+- Non-destructive (repeatable)
+- Clear vibration signature
+- Industry-standard test
+
+</div>
+</div>
+
+---
+
+# Algorithm: Label-Driven Clustering
+
+<div class="flex justify-center">
+<div class="w-140">
+
+```mermaid
+stateDiagram-v2
+    [*] --> NORMAL: Initialize K=1
+
+    NORMAL --> FROZEN: Outlier detected
+    note right of FROZEN: Buffer frozen\nWait for operator
+
+    FROZEN --> NORMAL: Operator labels → K++
+    FROZEN --> NORMAL: Operator discards (false alarm)
+
+    FROZEN --> FROZEN_IDLE: Motor stops
+    FROZEN_IDLE --> FROZEN: Motor restarts
+    FROZEN_IDLE --> NORMAL: Label during downtime
+```
+
+</div>
+</div>
+
+<div class="text-sm mt-4">
+
+**Key insight:** Alarm persists until operator responds. No timeout. Survives shift changes.
+
+</div>
+
+---
+
+# TinyML Optimizations Applied
+
+<div class="grid grid-cols-2 gap-8">
 <div>
 
 ### Memory Layout
+
 ```c
-// Total: 2.5 KB
-struct kmeans_model_t {
+// Total: ~2.5 KB
+typedef struct {
   cluster_t clusters[16];  // 1.0 KB
   ring_buffer_t buffer;    // 1.2 KB
   uint8_t k, feature_dim;  // 0.3 KB
-};
+} kmeans_model_t;
 ```
 
 ### Fixed-Point Math (Q16.16)
+
 ```c
 #define FLOAT_TO_FIXED(x) \
   ((int32_t)((x) * 65536))
@@ -274,127 +296,79 @@ struct kmeans_model_t {
 ```
 
 </div>
-
 <div>
 
-### Techniques Applied
+### Optimization Techniques
 
 | Technique | Benefit |
 |-----------|---------|
-| Q16.16 fixed-point | No FPU needed |
-| Squared distance | Avoids sqrt (~30%) |
-| EMA updates | O(1) per sample |
-| Static allocation | No malloc |
-| Ring buffer | Bounded memory |
-
-**TO-DO:** Link to TinyOL paper for baseline comparison
+| Q16.16 fixed-point | No FPU required |
+| Squared distance | Avoids sqrt (~30% faster) |
+| EMA updates | O(1) memory per sample |
+| Static allocation | No malloc/fragmentation |
+| Ring buffer | Bounded 100 samples |
 
 </div>
-
 </div>
 
 <!--
-Key insight from TinyOL: freeze base layers, train only final layers.
+TinyOL uses autoencoder: input → encoder → latent → decoder → output.
+That's ~100KB+ for network weights.
 
-We extend this: no base layers at all. Pure incremental clustering with EMA updates. Result: 2.5KB total footprint.
+We use streaming k-means: just K centroids × D dimensions × 4 bytes.
+With K=16, D=7 features: only 448 bytes for centroids.
 -->
 
 ---
 
-# Model Performance
+# Memory Comparison
 
-<div class="grid grid-cols-2 gap-8">
-
-<div>
-
-### CWRU Dataset Results
-
-| Method | Accuracy | Memory |
-|--------|----------|--------|
-| CNN Baseline | 95-98% | ~500KB |
-| Lite CNN | 99.86% | 153K params |
-| **TinyOL-HITL (K=1)** | **[TODO]%** | **2.5KB** |
-| **TinyOL-HITL (K=4)** | **[TODO]%** | **2.5KB** |
-| **+ HITL corrections** | **[TODO]%** | **2.5KB** |
-
-</div>
-
-<div>
-
-### Expected Improvement
-
-<div class="w-72">
+<div class="flex justify-center">
 
 ```mermaid
 xychart-beta
-    title "Accuracy vs Labels"
-    x-axis [0, 1, 2, 4, 8, 16]
-    y-axis "Accuracy %" 0 --> 100
-    line [50, 65, 75, 82, 88, 92]
+    title "RAM Usage Comparison (KB)"
+    x-axis ["TinyOL", "TinyTL", "MCUNetV3", "TinyOL-HITL"]
+    y-axis "RAM (KB)" 0 --> 300
+    bar [100, 50, 256, 2.5]
 ```
 
 </div>
 
-**TO-DO:** Replace with actual experimental data
+<div class="text-center mt-4">
 
-</div>
+**TinyOL-HITL: 2.5 KB** — Runs on virtually any MCU
 
 </div>
 
 ---
 
-# Implementation API
-
-```c
-// 1. Initialize (K=1, "normal" baseline)
-kmeans_init(&model, feature_dim, learning_rate);
-
-// 2. Stream samples (auto-clusters)
-int8_t cluster = kmeans_update(&model, features);
-
-// 3. Handle outliers (operator labels)
-if (cluster == -1 && kmeans_get_state(&model) == STATE_FROZEN) {
-    kmeans_add_cluster(&model, "bearing_fault");  // K++
-}
-
-// 4. Predict without updating
-uint8_t predicted = kmeans_predict(&model, features);
-```
-
-<div class="text-sm mt-4">
-
-**Full API:** 8 functions total. See `streaming_kmeans.h`
-
-</div>
-
----
-
-# SCADA Integration
+# Feature Extraction Pipeline
 
 <div class="flex justify-center">
 <div class="w-160">
 
 ```mermaid
-sequenceDiagram
-    participant Device
-    participant MQTT
-    participant FUXA
-    participant Operator
+flowchart LR
+    subgraph Sensors
+        A[MPU6050/ADXL345<br/>3-axis accel] --> B[Vibration]
+        C[ZMCT103C × 3<br/>Phase currents] --> D[Current]
+    end
 
-    Device->>MQTT: sensor/{id}/data (every 10s)
-    MQTT->>FUXA: Update dashboard
+    subgraph Features["7D Feature Vector"]
+        B --> E[RMS]
+        B --> F[Peak]
+        B --> G[Crest Factor]
+        D --> H[I₁, I₂, I₃]
+        D --> I[I_RMS]
+    end
 
-    Note over Device: Outlier detected!
-    Device->>MQTT: alarm_active: true
-    MQTT->>FUXA: 🔴 Red banner
-
-    Operator->>FUXA: Inspect motor
-    Operator->>FUXA: Type: "bearing_fault"
-    FUXA->>MQTT: tinyol/{id}/label
-    MQTT->>Device: Create cluster
-
-    Device->>MQTT: k: 2, alarm_active: false
-    MQTT->>FUXA: ✅ Resume monitoring
+    subgraph Model
+        E & F & G & H & I --> J[Streaming K-means]
+        J --> K{Outlier?}
+        K -->|No| L[Update Centroid]
+        K -->|Yes| M[FREEZE → Alarm]
+    end
 ```
 
 </div>
@@ -402,85 +376,264 @@ sequenceDiagram
 
 ---
 
-# Test Results
+# CWRU Benchmark Results
 
 <div class="grid grid-cols-2 gap-8">
-
 <div>
 
-### Demonstrated Workflow
+### Literature Comparison
 
-1. ✓ Baseline established (K=1)
-2. ✓ Eccentric weight added
-3. ✓ Alarm triggered (RMS spike)
-4. ✓ Operator labels "unbalance"
-5. ✓ K=2, correct predictions
-
-**TO-DO:** Record 2-minute demo video
+| Method | Accuracy | Memory |
+|--------|----------|--------|
+| CNN (supervised) | 97-99% | ~500KB |
+| Lite CNN | 99.86% | 153K params |
+| K-means (batch) | ~80% | O(nK) |
+| **Ours (K=1)** | **[DATA]%** | **2.5KB** |
+| **Ours (K=4)** | **[DATA]%** | **2.5KB** |
+| **+HITL** | **[DATA]%** | **2.5KB** |
 
 </div>
-
 <div>
 
-### Sensor Comparison
+### Confusion Matrix
 
-| Config | Accuracy | Notes |
-|--------|----------|-------|
-| Vibration only | [TODO]% | 3D features |
-| + Current | [TODO]% | 7D features |
+```
+              Predicted
+           N    B    I    O
+Actual N [   ][   ][   ][   ]
+       B [   ][   ][   ][   ]
+       I [   ][   ][   ][   ]
+       O [   ][   ][   ][   ]
+```
 
-**TO-DO:** Run comparison experiments
+**[DATA]** = Fill from experiments
+
+</div>
+</div>
+
+<div class="text-sm mt-4 opacity-75">
+
+Note: We avoid common data leakage (Rosa 2024) by using proper train/test splits.
 
 </div>
 
+---
+
+# Hardware Test Results
+
+<div class="grid grid-cols-2 gap-8">
+<div>
+
+### Baseline → Fault Detection
+
+| Condition | RMS (m/s²) | Cluster |
+|-----------|------------|---------|
+| Normal (50Hz) | [DATA] | C0 |
+| Unbalance 100g·mm | [DATA] | C1 |
+| Unbalance 200g·mm | [DATA] | C2 |
+
+### Detection Latency
+- Alarm trigger: **[DATA] samples**
+- Time to detection: **[DATA] seconds**
+
 </div>
+<div>
+
+### Cross-Platform Consistency
+
+| MCU | Centroid Delta |
+|-----|----------------|
+| ESP32 (baseline) | 0 |
+| RP2350 | [DATA] |
+
+**Target:** Delta < 0.1 (fixed-point consistent)
+
+</div>
+</div>
+
+---
+
+# Live Demo: HITL Workflow
+
+<div class="flex justify-center">
+<div class="w-140">
+
+```mermaid
+sequenceDiagram
+    participant M as Motor
+    participant D as Device
+    participant S as SCADA
+    participant O as Operator
+
+    M->>D: Normal vibration
+    D->>S: cluster: 0, label: "normal"
+
+    Note over M: Add eccentric weight
+
+    M->>D: Increased vibration
+    D->>D: Outlier detected!
+    D->>S: alarm_active: true
+    S->>O: 🔴 Red banner
+
+    O->>O: Walk to motor, inspect
+    O->>S: Label: "unbalance"
+    S->>D: tinyol/device/label
+
+    D->>D: K++ (K=2)
+    D->>S: cluster: 1, label: "unbalance"
+    S->>O: ✅ Resume monitoring
+```
+
+</div>
+</div>
+
+---
+
+# API: 8 Functions Total
+
+```c
+// 1. Initialize with K=1 ("normal" baseline)
+kmeans_init(&model, feature_dim, learning_rate);
+
+// 2. Stream samples - returns cluster ID or -1 if outlier
+int8_t cluster = kmeans_update(&model, features);
+
+// 3. Handle alarms
+if (cluster == -1 && kmeans_get_state(&model) == STATE_FROZEN) {
+    // Operator labels via MQTT
+    kmeans_add_cluster(&model, "bearing_fault");  // K++
+}
+
+// 4. Predict without updating
+uint8_t predicted = kmeans_predict(&model, features);
+
+// 5. Correct misclassifications
+kmeans_correct(&model, point, old_cluster, new_cluster);
+```
+
+<div class="text-sm mt-4">
+
+Full API: `kmeans_init`, `kmeans_update`, `kmeans_predict`, `kmeans_add_cluster`, `kmeans_discard`, `kmeans_correct`, `kmeans_get_state`, `kmeans_reset`
+
+</div>
+
+---
+
+# SCADA Integration (MQTT)
+
+<div class="grid grid-cols-2 gap-4">
+<div>
+
+### Device → SCADA (every 10s)
+
+```json
+{
+  "device_id": "motor_01",
+  "cluster": 0,
+  "label": "normal",
+  "k": 1,
+  "alarm_active": false,
+  "rms_avg": 5.2,
+  "peak_avg": 9.1,
+  "crest_avg": 1.75
+}
+```
+
+</div>
+<div>
+
+### Operator → Device
+
+```json
+// Create new cluster
+{"label": "bearing_outer_race"}
+
+// Discard false alarm
+{"discard": true}
+```
+
+**Topics:**
+- `sensor/{id}/data` — summaries
+- `tinyol/{id}/label` — create cluster
+- `tinyol/{id}/discard` — clear alarm
+
+</div>
+</div>
+
+---
+
+# Key Contribution vs TinyOL
+
+<div class="flex justify-center">
+
+| Aspect | TinyOL (Ren 2021) | TinyOL-HITL (Ours) |
+|--------|-------------------|---------------------|
+| Pre-training | ✓ Required (autoencoder) | ✗ None |
+| Initial classes | Fixed at deployment | K=1, grows dynamically |
+| Memory | ~100KB SRAM | 2.5KB total |
+| Architecture | ARM Cortex-M4 only | ESP32 + RP2350 |
+| HITL integration | None | Core feature |
+| Protocol | Proprietary | Standard MQTT |
+
+</div>
+
+<v-click>
+
+### What We Learned From TinyOL
+- Online learning on MCUs is feasible
+- Streaming data one-by-one works
+- EMA updates are stable
+
+### What We Added
+- **Unsupervised start** (no pre-training)
+- **Operator-driven class discovery**
+- **Freeze-on-alarm workflow**
+
+</v-click>
 
 ---
 
 # Future Enhancements
 
 <div class="grid grid-cols-3 gap-4 text-sm">
-
 <div>
 
-### Model Improvements
+### Algorithm
 - Cluster merging
 - Confidence scoring
-- Auto-encoder features
-
-**TO-DO:** Cite relevant papers
+- Auto-threshold tuning
+- Multi-resolution features
 
 </div>
-
 <div>
 
 ### Hardware
 - Energy harvesting
 - Compact PCB design
-- Industrial enclosure (IP65)
+- IP65 enclosure
+- Battery monitoring
 
 </div>
-
 <div>
 
 ### Integration
-- OPC-UA native support
+- OPC-UA native
 - Edge-to-cloud sync
 - Fleet management
+- Historical trending
 
 </div>
-
 </div>
 
-<div class="flex justify-center mt-4">
-<div class="w-140">
+<div class="flex justify-center mt-8">
+<div class="w-120">
 
 ```mermaid
 timeline
-    title Roadmap
-    Current : Proof of Concept : Arduino + MQTT
-    Q1 2026 : Production Ready : Custom PCB
-    Q2 2026 : Commercial : Off-the-shelf Product
+    title Development Roadmap
+    Current : Research Prototype
+    Q1 2026 : Production Ready
+    Q2 2026 : Commercial Product
 ```
 
 </div>
@@ -495,32 +648,25 @@ class: text-center
 
 <v-clicks>
 
-### Sometimes the best solution is the simplest one.
+### Sometimes the simplest solution wins.
 
-No cloud. No pre-training. No vendor lock-in.
+**No cloud.** No pre-training. No vendor lock-in.
 
-**Deploy on Day 1. Learn as you go.**
+**Deploy Day 1. Learn as you go.**
+
+TinyOL-HITL proves: Unsupervised + Human-in-the-Loop = Industrial-Ready PdM
 
 </v-clicks>
 
 <div class="pt-8" v-click>
 
-```
-TinyOL-HITL proves:
-Unsupervised + Human-in-the-Loop = Industrial-Ready PdM
-```
+**Core contribution:**
+Label-driven incremental clustering that starts from K=1
+and grows through operator feedback.
 
-**GitHub:** `github.com/leekaize/tinyol-hitl`
+**Memory:** 2.5 KB | **Platforms:** ESP32 + RP2350
 
 </div>
-
-<!--
-The research question was: Can we build predictive maintenance that works without expert setup, without training data, without vendor lock-in?
-
-Answer: Yes. Put streaming k-means on a microcontroller. Let operators label faults as they find them. System grows from K=1 to K=N organically.
-
-Call to action: Sometimes it's better to step back and ask - what's the simplest solution to the most pressing problem?
--->
 
 ---
 layout: end
@@ -529,16 +675,13 @@ layout: end
 # Questions?
 
 <div class="grid grid-cols-2 gap-8 mt-8">
-
 <div>
 
 ### Resources
-- Paper: [Link TBD]
-- Code: github.com/leekaize/tinyol-hitl
-- Demo: [Video link TBD]
+- Code: [github.com/leekaize/tinyol-hitl](https://github.com/leekaize/tinyol-hitl)
+- Slides: [leekaize.github.io/tinyol-hitl](https://leekaize.github.io/tinyol-hitl)
 
 </div>
-
 <div>
 
 ### Contact
@@ -546,5 +689,10 @@ layout: end
 - Supervisor: Dr Hudyjaya Siswoyo Jo
 
 </div>
+</div>
+
+<div class="text-center mt-8 text-sm opacity-75">
+
+Thank you for your attention.
 
 </div>

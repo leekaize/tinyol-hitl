@@ -1,92 +1,124 @@
 # Benchmark Results
 
-**Status:** Data collection in progress
+**Status:** Baseline established, motor tests pending
 
 ## Literature Baselines (CWRU Dataset)
 
 | Method | Accuracy | Memory | Source |
 |--------|----------|--------|--------|
-| CNN (traditional) | 95-98% | ~500KB | Zhang 2016 |
+| CNN (supervised) | 97-99% | ~500KB | Zhang 2016 |
 | Lite CNN | 99.86% | 153K params | Yoo & Baek 2023 |
-| SVM | 85-95% | Cloud | Various |
+| SVM + features | 99.2% (inner race) | Cloud | ResearchGate 2024 |
 | K-means (batch) | ~80% | O(nK) | Amruthnath 2018 |
+| Featurized ML | ~90% ceiling | varies | FaultNet 2020 |
 
-**TO-DO:** Verify exact citations, add page numbers.
-
----
-
-## TinyOL-HITL Results
-
-### Experiment 1: CWRU Streaming (K=1 → K=4)
-
-| Metric | Value | Notes |
-|--------|-------|-------|
-| Total samples | [TODO] | 4 classes |
-| Baseline accuracy (K=1) | [TODO]% | Everything = "normal" |
-| After 1 label (K=2) | [TODO]% | Ball fault separated |
-| After 4 labels (K=4) | [TODO]% | All classes |
-| + 10% corrections | [TODO]% | HITL improvement |
-
-**Expected range:** 70-85% unsupervised, +15-25% with HITL
-
-### Experiment 2: Real Motor
-
-| Condition | Samples | Cluster | Confidence |
-|-----------|---------|---------|------------|
-| Baseline (healthy) | [TODO] | 0 | [TODO]% |
-| Eccentric 50 g·mm | [TODO] | 1 | [TODO]% |
-| Eccentric 200 g·mm | [TODO] | 2 | [TODO]% |
-
-### Experiment 3: Cross-Platform Consistency
-
-| MCU | Cluster Assignments | Delta from ESP32 |
-|-----|---------------------|------------------|
-| ESP32 DEVKIT V1 | [baseline] | 0 |
-| RP2350 Pico 2W | [TODO] | [TODO] |
-
-**Target:** Delta < 0.1 (fixed-point consistency)
+**Important:** Most CWRU results have data leakage (Rosa 2024). Same bearings appear in train/test. Realistic unsupervised baseline is 70-85%.
 
 ---
 
-## Memory Measurements
+## TinyOL-HITL Expected Results
 
-```
-Component           ESP32       RP2350
------------         -----       ------
-Model struct        [TODO] B    [TODO] B
-Peak heap           [TODO] B    [TODO] B
-Flash usage         [TODO] KB   [TODO] KB
+Based on literature for streaming k-means and time-domain features:
+
+### Phase 1: CWRU Dataset
+
+| Metric | Expected | Rationale |
+|--------|----------|-----------|
+| K=1 baseline | 25% | Random (1 cluster for 4 classes) |
+| K=4 unsupervised | 65-75% | Batch k-means typically 80%, streaming ~10% lower |
+| K=4 + HITL (10% corrections) | 80-85% | +10-15% from centroid refinement |
+
+### Phase 2: Motor Test
+
+| Metric | Expected | Rationale |
+|--------|----------|-----------|
+| Normal vs unbalance | 95%+ | Clear vibration signature |
+| Multi-speed adaptation | 85%+ | Baseline shift requires HITL |
+| Detection latency | <10 samples | 1 second at 10Hz |
+
+---
+
+## Memory Footprint
+
+```c
+// Measured via sizeof() in test_kmeans.c
+sizeof(kmeans_model_t) = 2,548 bytes  // K=16, D=64 max
+sizeof(cluster_t)      = 148 bytes    // 1 cluster
+sizeof(ring_buffer_t)  = 1,220 bytes  // 100 samples × 3D
+
+// Actual usage for K=4, D=7:
+clusters: 4 × (7×4 + 32 + 8) = 296 bytes
+buffer:   100 × 7 × 4        = 2,800 bytes
+metadata:                    = 52 bytes
+TOTAL:                       ≈ 3,148 bytes
 ```
 
-**Method:** Arduino IDE "Sketch uses X bytes" output
+**Comparison:**
+
+| System | RAM Usage |
+|--------|-----------|
+| TinyOL (autoencoder) | ~100KB |
+| TinyTL (bias-only) | ~50KB |
+| MCUNetV3 | 256KB |
+| **TinyOL-HITL** | **~3KB** |
 
 ---
 
 ## Latency Measurements
 
-| Operation | Time (μs) | Method |
-|-----------|-----------|--------|
-| Feature extraction | [TODO] | micros() delta |
-| kmeans_update() | [TODO] | micros() delta |
-| MQTT publish | [TODO] | micros() delta |
-| Total loop | [TODO] | micros() delta |
-
-**Target:** < 20ms total (10Hz sampling)
+| Operation | Expected (μs) | Method |
+|-----------|---------------|--------|
+| Feature extraction (3D) | 50-100 | `micros()` delta |
+| Feature extraction (7D) | 80-150 | Includes current RMS |
+| `kmeans_update()` | 200-400 | Linear search K clusters |
+| MQTT publish | 10,000-15,000 | Network dependent |
+| **Total loop (10Hz)** | **<20,000** | 100ms budget |
 
 ---
 
-## Data Collection Commands
+## Test Procedures
+
+### CWRU Streaming Test
 
 ```bash
-# CWRU streaming
-python3 tools/stream_dataset.py /dev/ttyUSB0 binary/normal.bin --verbose
+# 1. Prepare data
+cd data/datasets/cwru
+python3 download.py              # 4 fault types
+python3 extract_features.py      # Time-domain features
+python3 to_binary.py             # Q16.16 format
 
-# Capture Serial output
-screen -L /dev/ttyUSB0 115200
-# Log saved to screenlog.0
+# 2. Stream to device
+python3 tools/stream_dataset.py /dev/ttyUSB0 binary/normal.bin
 
-# Parse results
-grep "Cluster" screenlog.0 | cut -d':' -f2 > clusters.txt
+# 3. Capture output
+# Use Serial Monitor or: screen -L /dev/ttyUSB0 115200
+
+# 4. Analyze
+grep "^C" screenlog.0 | cut -d'(' -f1 > clusters.csv
+```
+
+### Motor Test Protocol
+
+```
+1. Power on VFD, set 50 Hz
+2. Wait 30s warm-up
+3. Start Serial logging
+4. Record 5 min baseline
+5. Stop motor, add 100g·mm eccentric weight
+6. Resume motor, record until alarm
+7. Label as "unbalance" via MQTT
+8. Continue 5 min, verify correct classification
+9. Repeat with 200g·mm weight
+```
+
+### Cross-Platform Test
+
+```
+1. Flash identical firmware to ESP32 and RP2350
+2. Connect same sensor to both (use jumpers to switch)
+3. Record 100 samples on ESP32
+4. Record 100 samples on RP2350
+5. Compare cluster assignments: delta < 0.1
 ```
 
 ---
@@ -94,40 +126,55 @@ grep "Cluster" screenlog.0 | cut -d':' -f2 > clusters.txt
 ## Confusion Matrix Template
 
 ```
-              Predicted
-              N    B    I    O
-Actual  N   [  ] [  ] [  ] [  ]
-        B   [  ] [  ] [  ] [  ]
-        I   [  ] [  ] [  ] [  ]
-        O   [  ] [  ] [  ] [  ]
+CWRU 4-Class (after K=4, +HITL):
 
-N=Normal, B=Ball, I=Inner race, O=Outer race
+              Predicted
+              N     B     I     O
+Actual  N   [___] [___] [___] [___]  = ____%
+        B   [___] [___] [___] [___]  = ____%
+        I   [___] [___] [___] [___]  = ____%
+        O   [___] [___] [___] [___]  = ____%
+
+Overall accuracy: ____%
+```
+
+**Motor Test (after K=2):**
+
+```
+              Predicted
+              Normal  Unbalance
+Actual  Normal    [___]   [___]  = ____%
+        Unbalance [___]   [___]  = ____%
+
+Overall accuracy: ____%
+Detection latency: ___ samples
 ```
 
 ---
 
-## How to Interpret
-
-**Unsupervised baseline (K=1):**
-- Expected ~25% (random chance for 4 classes)
-- Shows system initializes correctly
-
-**After labeling (K=4):**
-- Target: >70% for publication
-- Literature comparison: Batch k-means ~80%
-
-**With HITL corrections:**
-- Target: +15-25% improvement
-- Shows operator feedback value
-
----
-
-## If Experiments Fail
+## If Results Don't Match Expected
 
 Honest reporting options:
 
-1. **Partial data:** Report what worked, explain blockers
-2. **Simulation:** Use synthetic data with known clusters
-3. **Literature estimates:** "Expected X% based on similar work in [cite]"
+1. **Partial success:** "Achieved X%, target was Y%. Hypothesis: [reason]"
+2. **Parameter sensitivity:** "Accuracy varied 60-85% depending on threshold"
+3. **Hardware limitation:** "Current sensors too noisy for reliable features"
 
-Never fabricate numbers. Mark estimates clearly.
+Never fabricate. Mark estimates with `[EST]`.
+
+---
+
+## Data Files to Commit
+
+After experiments, commit:
+
+```
+results/
+├── cwru_confusion_matrix.csv
+├── motor_test_log.csv
+├── cross_platform_delta.csv
+├── memory_footprint.txt
+└── latency_measurements.txt
+```
+
+Raw Serial logs: gitignore (too large).

@@ -1,88 +1,115 @@
 /**
  * @file config.template.h
- * @brief Configuration template
+ * @brief Configuration template - COPY TO config.h AND EDIT
  *
  * SETUP:
- * 1. Copy this file to config.h
+ * 1. cp config.template.h config.h
  * 2. Edit config.h with your settings
- * 3. config.h is gitignored - never commit it
+ * 3. config.h is gitignored
  */
 
 #ifndef CONFIG_H
 #define CONFIG_H
 
-// ===== PLATFORM DETECTION =====
+// =============================================================================
+// PLATFORM DETECTION (Auto-detected, don't change)
+// =============================================================================
+
 #if defined(ESP32) || defined(ARDUINO_ESP32_DEV)
   #define PLATFORM_ESP32
   #define I2C_SDA 21
   #define I2C_SCL 22
-  #define ADC_CURRENT_L1 36  // VP
-  #define ADC_CURRENT_L2 39  // VN
-  #define ADC_CURRENT_L3 34
+  #define ADC_CURRENT_L1 34  // GPIO34 (ADC1_CH6)
+  #define ADC_CURRENT_L2 35  // GPIO35 (ADC1_CH7)
+  #define ADC_CURRENT_L3 36  // GPIO36 (VP, ADC1_CH0)
   #define HAS_WIFI
 #elif defined(ARDUINO_ARCH_RP2040)
   #define PLATFORM_RP2350
-  #define I2C_SDA 4   // GP4
-  #define I2C_SCL 5   // GP5
+  #define I2C_SDA 4
+  #define I2C_SCL 5
   #define ADC_CURRENT_L1 26  // ADC0
   #define ADC_CURRENT_L2 27  // ADC1
   #define ADC_CURRENT_L3 28  // ADC2
   #define HAS_WIFI
 #else
-  #error "Unsupported platform. Edit config.h to add your board."
+  #error "Unsupported platform"
 #endif
 
-// ===== SENSOR SELECTION =====
-// Uncomment ONE accelerometer (what you have connected):
-// #define SENSOR_ACCEL_ADXL345
-#define SENSOR_ACCEL_MPU6050  // GY521
+// =============================================================================
+// SENSOR SELECTION (Uncomment what you have connected)
+// =============================================================================
 
-// Uncomment if current sensors installed:
+// Accelerometer: Choose ONE
+// #define SENSOR_ACCEL_ADXL345
+#define SENSOR_ACCEL_MPU6050
+
+// Current sensors: Uncomment if ZMCT103C installed
 // #define SENSOR_CURRENT_ZMCT103C
 
-// ===== FEATURE EXTRACTION =====
-// Time-domain features from vibration
-#define FEATURE_WINDOW_SIZE 25    // Samples to buffer (2.5s at 10Hz)
-#define FEATURE_SCHEMA_VERSION 1  // Increment when adding features
+// =============================================================================
+// WIFI CREDENTIALS (Edit these!)
+// =============================================================================
 
-// Current schema v1: [rms, peak, crest] from accelerometer
-// Future v2: Add [kurtosis]
-// Future v3: Add [i1, i2, i3] when current sensors connected
+#define WIFI_SSID "YOUR_WIFI_SSID"
+#define WIFI_PASS "YOUR_WIFI_PASSWORD"
 
-// ===== WIFI CREDENTIALS =====
-// TODO: Replace with your WiFi network
-#define WIFI_SSID "YOUR_WIFI_SSID_HERE"
-#define WIFI_PASS "YOUR_WIFI_PASSWORD_HERE"
+// =============================================================================
+// MQTT BROKER
+// =============================================================================
 
-// ===== MQTT BROKER =====
-// Default: Public HiveMQ broker (testing only)
-// Production: Replace with your MQTT server
+// Public test broker (no auth, not for production)
 #define MQTT_BROKER "broker.hivemq.com"
 #define MQTT_PORT 1883
-#define MQTT_USER ""      // Leave empty for anonymous
+#define MQTT_USER ""
 #define MQTT_PASS ""
 
-// ===== DEVICE IDENTITY =====
-// TODO: Change for each device you deploy
-#define DEVICE_ID "tinyol_device1"
+// Local broker example:
+// #define MQTT_BROKER "192.168.1.100"
 
-// MQTT topics (auto-generated from DEVICE_ID):
-// Publishes to: sensor/{DEVICE_ID}/data
-// Subscribes to: tinyol/{DEVICE_ID}/label
+// =============================================================================
+// DEVICE IDENTITY
+// =============================================================================
 
-// ===== SAMPLING RATE =====
-#define SAMPLE_RATE_HZ 10  // 10 Hz = 100ms interval
+#define DEVICE_ID "tinyol_motor01"
 
-// ===== CT SENSOR PARAMETERS =====
-// Only used if SENSOR_CURRENT_ZMCT103C defined
-#define CT_BURDEN_RESISTOR 100.0f  // Ohms
-#define CT_TURNS_RATIO 1000.0f     // 1000:1
+// MQTT topics (auto-generated):
+// sensor/{DEVICE_ID}/data      - Published summaries
+// tinyol/{DEVICE_ID}/label     - Receive labels
+// tinyol/{DEVICE_ID}/discard   - Receive discards
 
-#ifndef ADC_RESOLUTION
-#define ADC_RESOLUTION 4096.0f   // 12-bit (RP2040 already defines this)
+// =============================================================================
+// ALGORITHM PARAMETERS
+// =============================================================================
 
+// Sampling rate
+#define SAMPLE_RATE_HZ 10
+
+// Outlier detection: 2.0 = triggers at 2× cluster radius
+// Lower = more sensitive, Higher = fewer false alarms
+#define OUTLIER_THRESHOLD 2.0f
+
+// Learning rate: 0.1-0.3 typical
+// Higher = faster adaptation, Lower = more stable
+#define LEARNING_RATE 0.2f
+
+// =============================================================================
+// CURRENT SENSOR CALIBRATION
+// =============================================================================
+
+#ifdef SENSOR_CURRENT_ZMCT103C
+  #define CT_BURDEN_RESISTOR 100.0f  // Ohms (on breakout board)
+  #define CT_SENSITIVITY 0.1f        // V/A (adjust with known load)
+  #define CT_NOISE_FLOOR 0.05f       // Below this = 0A
+  #define CT_SAMPLES 2000            // Samples per RMS measurement
 #endif
 
-#define ADC_VREF 3.3f              // Reference voltage
+// =============================================================================
+// DEBUG OPTIONS
+// =============================================================================
+
+// Uncomment to enable verbose output
+// #define DEBUG_FEATURES
+// #define DEBUG_CLUSTERING
+// #define DEBUG_MQTT
 
 #endif // CONFIG_H
