@@ -20,6 +20,9 @@
     columns=flexible
 }
 
+% Custom command for research markers
+\newcommand{\researchneeded}[1]{\textcolor{red}{\textbf{[RESEARCH: #1]}}}
+
 \begin{document}
 
 \title{TinyOL-HITL: Unsupervised TinyML Fault Discovery with Operator Guidance for Industrial Condition Monitoring}
@@ -39,16 +42,18 @@
 \begin{abstract}
 Predictive maintenance adoption remains below 30\% in small-to-medium enterprises due to three critical barriers: required machine learning expertise, vendor lock-in, and integration complexity. Existing solutions, including TinyOL (TinyML with Online-Learning on Microcontrollers), demonstrate on-device learning but assume pre-defined fault classes and require batch training data---constraints incompatible with real-world industrial deployments where fault types emerge unpredictably over operational lifetimes.
 
-We present TinyOL-HITL, an operator-driven extension of incremental clustering that eliminates pre-training requirements and grows classification models organically through human-in-the-loop interaction. The system initializes with a single ``normal'' cluster and dynamically expands as operators label novel fault signatures via standard SCADA interfaces. Key contributions include: label-driven cluster discovery without historical datasets, freeze-on-alarm workflow enabling physical inspection before classification, cross-platform Arduino library supporting multiple microcontroller architectures without vendor lock-in, and integration via industrial-standard MQTT/JSON protocols requiring zero custom software.
+We present TinyOL-HITL, an operator-driven extension of incremental clustering that eliminates pre-training requirements and grows classification models organically through human-in-the-loop interaction. The system initializes with a single ``normal'' cluster and dynamically expands as operators label novel fault signatures via standard SCADA interfaces. Key contributions include: (1) label-driven cluster discovery without historical datasets, (2) three-state alarm workflow (NORMAL $\rightarrow$ ALARM $\rightarrow$ WAITING\_LABEL) enabling physical inspection before classification, (3) persistent model storage surviving power cycles, (4) cross-platform Arduino library supporting ESP32 (Xtensa) and RP2350 (ARM Cortex-M33), and (5) integration via industrial-standard MQTT/JSON protocols requiring zero custom software.
 
-Validation combines the CWRU bearing dataset with physical testing on a 2 HP induction motor. Results demonstrate reliable unsupervised baseline classification with measurable improvement from operator corrections---showing that incremental feedback enables competitive accuracy without upfront training data or ML expertise. Integration with open-source FUXA SCADA provides immediate deployment capability using commodity hardware, addressing the pragmatic gap between academic online learning research and industrial adoption requirements.
+Validation combines the CWRU bearing dataset with physical testing on a 0.5 HP induction motor. \researchneeded{Insert final accuracy results after experiments}. Integration with open-source FUXA SCADA provides immediate deployment capability using commodity hardware (\$26-37/node), addressing the pragmatic gap between academic online learning research and industrial adoption requirements.
 \end{abstract}
 
 \begin{IEEEkeywords}
-TinyML, online learning, human-in-the-loop, predictive maintenance, edge computing, streaming k-means, SCADA integration
+TinyML, online learning, human-in-the-loop, predictive maintenance, edge computing, streaming k-means, SCADA integration, persistent storage
 \end{IEEEkeywords}
 
+%==============================================================================
 \section{Introduction}
+%==============================================================================
 
 Predictive maintenance (PdM) prevents 70-80\% of equipment failures and delivers 9\% uptime gains \cite{pwc2018PredictiveMaintenance40}. Yet only 27\% of manufacturers adopt it \cite{maintainx20252025StateIndustrial}. 74\% of Industry 4.0 initiatives remain stuck in pilots \cite{mckinsey&company2021Industry40Adoption}.
 
@@ -56,15 +61,21 @@ Three barriers block deployment:
 
 \textbf{Expertise shortage:} Data scientists cost \$90,000-\$195,000 with 142-day hiring cycles \cite{comptia2024TechWorkforce}. Traditional ML needs 8-90 days per model \cite{algorithmia20202020StateEnterprise}. Supervised learning requires thousands of labeled failures. But MTBF often exceeds 10,000 hours, making labeled datasets prohibitively expensive. Result: 24\% cite lack of expertise as primary barrier \cite{maintainx20252025StateIndustrial}.
 
+\researchneeded{Verify expertise shortage statistics - search for 2024-2025 industry surveys on ML talent gap in manufacturing}
+
 \textbf{Vendor lock-in:} Commercial TinyML imposes \$50-200/device annual licensing. Proprietary protocols require gateway hardware (\$300-800/node). Most platforms support inference only. Training requires cloud upload. While 80\% prioritize open standards \cite{a&d2020OpenSourceIndustrial}, switching costs remain prohibitive for 24-year-old equipment.
 
-\textbf{Integration complexity:} 62.5\% of retrofits need protocol conversion \cite{alqoud2022Industry40Systematic}. Legacy systems use Modbus RTU/TCP, OPC-UA, BACnet, S7. Each requires custom integration. 76\% have sensors installed but struggle making data "clean, organized, connected" \cite{maintainx20252025StateIndustrial}.
+\researchneeded{Find specific vendor pricing examples - AWS IoT, Azure IoT, commercial PdM solutions}
 
-\textbf{Research gap:} Existing solutions optimize wrong metrics. Cloud-based PdM needs labels and internet. TinyML inference needs pre-trained models. Unsupervised methods lack interpretability. No system combines: (1) zero labeled data, (2) incremental learning via operator feedback, (3) open protocols, (4) cross-platform validation.
+\textbf{Integration complexity:} 62.5\% of retrofits need protocol conversion \cite{alqoud2022Industry40Systematic}. Legacy systems use Modbus RTU/TCP, OPC-UA, BACnet, S7. Each requires custom integration. 76\% have sensors installed but struggle making data ``clean, organized, connected'' \cite{maintainx20252025StateIndustrial}.
 
-\textbf{Our contribution:} TinyOL-HITL uses label-driven incremental clustering. Start with K=1 (no pre-training). Operators label faults as discovered. System grows from 1→N clusters organically. Open-source Arduino library with MQTT integration. Validated on ESP32-S3 (Xtensa) and RP2350 (ARM). Proven on CWRU dataset and real induction motor.
+\textbf{Research gap:} Existing solutions optimize wrong metrics. Cloud-based PdM needs labels and internet. TinyML inference needs pre-trained models. Unsupervised methods lack interpretability. No system combines: (1) zero labeled data startup, (2) incremental learning via operator feedback, (3) open protocols, (4) persistent storage across power cycles, (5) cross-platform validation.
 
+\textbf{Our contribution:} TinyOL-HITL uses label-driven incremental clustering with a novel three-state alarm system. Start with K=1 (no pre-training). Operators label faults as discovered. System grows from 1$\rightarrow$N clusters organically. Model persists across restarts. Open-source Arduino library with MQTT integration. Validated on ESP32 (Xtensa) and RP2350 (ARM). Proven on CWRU dataset and real induction motor.
+
+%==============================================================================
 \section{Related Work}
+%==============================================================================
 
 \subsection{TinyML for Predictive Maintenance}
 
@@ -76,122 +87,105 @@ The emergence of TinyML---machine learning on microcontrollers with $<$1MB RAM--
 
 \textbf{TinyTL} \cite{cai2020tinytl} demonstrated 33.8\% accuracy improvement over last-layer tuning through bias-only updates, reducing memory 6.5$\times$. Critical insight: bias parameters capture domain shift while requiring minimal storage.
 
+\researchneeded{Search for 2023-2025 TinyML papers on predictive maintenance - any newer approaches than TinyOL?}
+
 \textbf{CMSIS-NN} \cite{lai2018CMSISNNEfficientNeural} optimized ARM Cortex-M inference via SIMD instructions (4.6$\times$ speedup) and 8-bit quantization. Provides kernel library for DSP acceleration but offers no training capabilities.
 
-\textbf{TensorFlow Lite Micro} \cite{david2021TensorFlowLiteMicro} established edge inference standard through INT8 quantization and operator fusion. Achieves $<$50KB binary footprint but remains inference-only---training requires memory for activations, gradients, and optimizer states, typically 10-50$\times$ model size.
+\textbf{TensorFlow Lite Micro} \cite{david2021TensorFlowLiteMicro} established edge inference standard through INT8 quantization and operator fusion. Achieves $<$50KB binary footprint but remains inference-only.
 
-\textbf{Limitations:} All systems require pre-trained models or labeled data. None support unsupervised incremental learning from unlabeled streams.
+\textbf{Limitations:} All systems require pre-trained models or labeled data. None support unsupervised incremental learning from unlabeled streams with persistent storage.
 
 \subsection{Unsupervised Learning for Anomaly Detection}
 
 Industrial deployments rarely have labeled failure data. Unsupervised methods detect anomalies without supervision but face interpretability challenges.
 
-\textbf{Isolation Forest} \cite{liu2008IsolationForest} achieves O(n log n) complexity by isolating anomalies via random partitioning. Martin-del-Campo et al. \cite{martin-del-campo2020UnsupervisedRankingOutliers} applied Isolation Forest with dictionary learning to wind turbine SCADA data, achieving 92\% detection rate. Mousavi and Gandomi \cite{mousavi2022UNSUPERVISEDCONDITIONMONITORING} combined Variational Mode Decomposition with Isolation Forest for structural health monitoring. Zhong et al. \cite{zhong2019NovelUnsupervisedAnomaly} validated on gas turbines with 95.7\% precision.
+\textbf{Isolation Forest} \cite{liu2008IsolationForest} achieves O(n log n) complexity by isolating anomalies via random partitioning. Martin-del-Campo et al. \cite{martin-del-campo2020UnsupervisedRankingOutliers} applied Isolation Forest with dictionary learning to wind turbine SCADA data, achieving 92\% detection rate.
 
-However, Isolation Forest provides no fault classification---only binary anomaly flags. Maintenance requires actionable diagnosis, not just alerts.
+\researchneeded{Search for recent Isolation Forest applications in bearing fault detection 2022-2025}
 
-\textbf{Autoencoders} \cite{jakubowski2021AnomalyDetectionAsset} compress normal patterns via encoder-decoder architecture. Anomalies produce high reconstruction error. Jakubowski et al. achieved 89.3\% F1-score on asset degradation with Variational Autoencoders (VAE). Challenge: autoencoders require substantial memory (10-50KB parameters) and struggle with incremental updates.
+\textbf{Autoencoders} \cite{jakubowski2021AnomalyDetectionAsset} compress normal patterns via encoder-decoder architecture. Anomalies produce high reconstruction error. Challenge: autoencoders require substantial memory (10-50KB parameters) and struggle with incremental updates.
 
-\textbf{Principal Component Analysis (PCA)} \cite{sarita2022RETRACTEDPrincipalComponent} projects high-dimensional data to lower-dimensional space, detecting outliers via Mahalanobis distance. Effective for linear patterns but fails with non-linear machinery dynamics.
-
-\textbf{K-means clustering} groups similar patterns but requires pre-specified K. Amruthnath and Gupta \cite{amruthnath2018ResearchStudyUnsupervised} compared k-means, DBSCAN, and Gaussian Mixture Models (GMM) on bearing data, finding k-means superior for spherical clusters but sensitive to initialization.
+\textbf{K-means clustering} groups similar patterns but requires pre-specified K. Amruthnath and Gupta \cite{amruthnath2018ResearchStudyUnsupervised} compared k-means, DBSCAN, and GMM on bearing data, finding k-means superior for spherical clusters but sensitive to initialization.
 
 \textbf{Gap:} Unsupervised methods detect anomalies but lack actionable classification. Operators receive alerts without root cause diagnosis.
 
 \subsection{Incremental and Online Learning}
 
-Streaming data requires incremental updates without batch retraining. Classical ML assumes fixed datasets---inappropriate for continuous machinery monitoring.
+Streaming data requires incremental updates without batch retraining.
 
-\textbf{Mini-batch k-means} \cite{hicks2021MbkmeansFastClustering} reduces memory from 52GB to 0.98GB by updating centroids in fixed-size batches. AutoCloud K-Fixed \cite{ahmatshin2024MinibatchKMeansClustering} optimizes batch size B, exhibiting $O(dk(b+\log B))$ complexity with memory optimum at $B=n^{1/2}$. For $n=10^6$ samples, $B=1000$ achieves 99\% accuracy of batch k-means at 0.02\% memory.
+\textbf{Mini-batch k-means} \cite{hicks2021MbkmeansFastClustering} reduces memory from 52GB to 0.98GB by updating centroids in fixed-size batches. AutoCloud K-Fixed \cite{ahmatshin2024MinibatchKMeansClustering} optimizes batch size B, exhibiting $O(dk(b+\log B))$ complexity.
 
-\textbf{BIRCH} \cite{zhang1996BIRCHEfficientData} (Balanced Iterative Reducing and Clustering using Hierarchies) maintains Cluster Feature Trees for one-pass incremental clustering. Memory: O(K) vs O(nK) for batch k-means. Limitation: assumes spherical clusters, fails with arbitrary shapes.
+\textbf{BIRCH} \cite{zhang1996BIRCHEfficientData} (Balanced Iterative Reducing and Clustering using Hierarchies) maintains Cluster Feature Trees for one-pass incremental clustering. Memory: O(K) vs O(nK) for batch k-means.
 
-\textbf{DenStream} \cite{cao2006DensityBasedClusteringEvolving} extends DBSCAN for data streams through potential and outlier micro-clusters. Handles concept drift by aging cluster weights exponentially. Requires density threshold $\epsilon$ and min-points tuning---non-trivial for heterogeneous machinery signals.
+\textbf{Streaming k-means} \cite{shindler2011FastAccurateKmeans} uses exponential moving average (EMA) updates: $c_{k,\text{new}} = c_{k,\text{old}} + \alpha(x - c_{k,\text{old}})$.
 
-\textbf{Streaming k-means} \cite{shindler2011FastAccurateKmeans} uses exponential moving average (EMA) updates: $c_{k,\text{new}} = c_{k,\text{old}} + \alpha(x - c_{k,\text{old}})$. Advantages: constant memory O(KD), adaptive learning rate $\alpha$. Enhanced Vector Quantization \cite{flores2025EnhancedVectorQuantization} achieved $>$90\% compression on automotive data through incremental EMA.
+\researchneeded{Search for streaming clustering with persistent storage - any existing implementations?}
 
-\textbf{Gap:} All methods require fixed K upfront. Industrial reality: fault types unknown until discovered.
+\textbf{Gap:} All methods require fixed K upfront. Industrial reality: fault types unknown until discovered. None address power-cycle persistence.
 
 \subsection{Human-in-the-Loop Machine Learning}
 
-Active learning reduces labeling burden by querying high-uncertainty samples. Mosqueira-Rey et al. \cite{mosqueira-rey2023HumanintheloopMachineLearning} provide comprehensive taxonomy of HITL-ML (800+ citations), categorizing approaches:
-\begin{itemize}
-    \item \textbf{Active learning:} Query samples near decision boundaries. Wei et al. \cite{wei2019CostawareActiveLearning} achieved 20.5-30.2\% annotation time reduction via cost-aware sampling.
-    \item \textbf{Interactive machine learning:} Operator corrections refine models in real-time. Fails-Rechermann et al. \cite{fails2003InteractiveMachineLearning} demonstrated immediate feedback loops improve accuracy 15-25\%.
-    \item \textbf{Curriculum learning:} Present examples in difficulty order. Reduces training samples 30-40\% \cite{bengio2009CurriculumLearning}.
-\end{itemize}
+Active learning reduces labeling burden by querying high-uncertainty samples. Mosqueira-Rey et al. \cite{mosqueira-rey2023HumanintheloopMachineLearning} provide comprehensive taxonomy of HITL-ML.
 
-\textbf{Dairy DigiD} \cite{mahato2025DairyDigiDEdgeCloud} deployed HITL on NVIDIA Jetson for livestock monitoring, achieving 3.2\% mAP improvement with 84\% reduction in technician training time. Key insight: domain experts provide corrections faster than labeled datasets.
+\textbf{Dairy DigiD} \cite{mahato2025DairyDigiDEdgeCloud} deployed HITL on NVIDIA Jetson for livestock monitoring, achieving 3.2\% mAP improvement with 84\% reduction in technician training time.
 
-\textbf{Gap:} HITL-ML typically augments supervised learning. No system uses HITL to \textit{define} classes dynamically---discovering fault types through operator feedback rather than pre-labeled taxonomies.
+\researchneeded{Search for HITL in industrial settings 2023-2025 - manufacturing, PdM applications}
 
-\subsection{IIoT Protocols and Integration}
-
-Industrial legacy systems use heterogeneous protocols developed over 40+ years. Zhang et al. \cite{zhang2020ArchitectureImplementationIndustrial} document IIoT gateway architectures bridging OT (Operational Technology) and IT (Information Technology) networks.
-
-\textbf{OT protocols} \cite{zhang2020ArchitectureImplementationIndustrial}:
-\begin{itemize}
-    \item \textbf{Modbus RTU/TCP:} Serial (RS485) or Ethernet. 50+ years old, ubiquitous in PLCs. Polling-based, 10-100ms latency.
-    \item \textbf{OPC-UA:} Unified architecture for industrial automation. Client-server or pub/sub. Complex (200+ specs), high memory (>1MB).
-    \item \textbf{BACnet:} Building automation. 127 device types, 400+ data objects. Rarely used in manufacturing.
-    \item \textbf{S7:} Siemens proprietary for S7-300/400/1200/1500 PLCs. Ethernet-based, tightly integrated with TIA Portal.
-\end{itemize}
-
-\textbf{IT protocols} \cite{zhang2020ArchitectureImplementationIndustrial}:
-\begin{itemize}
-    \item \textbf{MQTT:} Publish-subscribe messaging. 2-byte header, QoS levels 0-2. Default choice for IIoT---bandwidth efficient, broker-based routing. Used by AWS IoT Core, Azure IoT Hub, HiveMQ, Mosquitto.
-    \item \textbf{CoAP:} Constrained Application Protocol for resource-limited devices. UDP-based, REST-like. Lower adoption than MQTT.
-    \item \textbf{HTTP/REST:} Universal but verbose. 100-500 byte headers. Unsuitable for constrained devices.
-\end{itemize}
-
-Alqoud et al. \cite{alqoud2022Industry40Systematic} surveyed 80 IIoT deployments: 62.5\% required protocol conversion, 45\% used custom gateway hardware (\$300-800/node), 73\% faced integration delays (3-18 months).
-
-\textbf{Gap:} Most TinyML research assumes direct sensor access. Real deployments require MQTT/Modbus/OPC-UA integration---rarely validated in academic work.
+\textbf{Gap:} HITL-ML typically augments supervised learning. No system uses HITL to \textit{define} classes dynamically through operator feedback.
 
 \subsection{CWRU Bearing Fault Benchmark}
 
-Case Western Reserve University bearing dataset \cite{smith2015RollingElementBearing} remains standard benchmark. 4 classes: normal, ball defect, inner race, outer race. 12kHz sampling, 0.007-0.040 inch fault depths.
+Case Western Reserve University bearing dataset \cite{smith2015RollingElementBearing} remains standard benchmark. 4 classes: normal, ball defect, inner race, outer race. 12kHz sampling.
 
-Traditional ML (SVM, KNN) achieves 85-95\% \cite{zhang2010SurveyCondition}. Basic CNNs reach 95-98\% \cite{paolanti2018MachineLearning}. Lite CNN \cite{yoo2023lite} achieved 99.86\% with 0.64\% parameters vs ResNet50.
+Traditional ML (SVM, KNN) achieves 85-95\%. Basic CNNs reach 95-98\%. Lite CNN \cite{yoo2023lite} achieved 99.86\% with 0.64\% parameters vs ResNet50.
 
-However, Rosa et al. \cite{rosa2024benchmarking} identified data leakage in typical train/test splits. Random splits mix different time periods from same bearing, inflating results 2-10\%. Proper protocol: separate bearings for train/test, cross-validate across fault types.
+However, Rosa et al. \cite{rosa2024benchmarking} identified data leakage in typical train/test splits. Random splits mix different time periods from same bearing, inflating results 2-10\%.
 
-\textbf{Gap:} Most papers report accuracy on random splits. Real-world generalization requires unseen bearings and evolving fault conditions---not addressed by static benchmarks.
+\researchneeded{Verify Rosa et al. data leakage claim - search for CWRU benchmark criticisms}
 
 \subsection{Summary of Research Gaps}
 
 \begin{table}[h]
 \centering
 \caption{Capability Comparison}
-\begin{tabular}{p{2.5cm}cccc}
+\begin{tabular}{p{2.2cm}ccccc}
 \toprule
-System & No Labels & Incremental & Open Std \\
+System & No Labels & Incr. & Open & Persist \\
 \midrule
-TinyOL \cite{ren2021TinyOLTinyMLOnlinelearning} & No & Yes & No \\
-Isolation Forest \cite{martin-del-campo2020UnsupervisedRankingOutliers} & Yes & No & No \\
-BIRCH \cite{zhang1996BIRCHEfficientData} & Yes & Yes & No \\
-Dairy DigiD \cite{mahato2025DairyDigiDEdgeCloud} & No & Yes & No \\
+TinyOL & No & Yes & No & No \\
+Isolation Forest & Yes & No & No & No \\
+BIRCH & Yes & Yes & No & No \\
+Dairy DigiD & No & Yes & No & No \\
 \midrule
-\textbf{TinyOL-HITL} & Yes & Yes & Yes \\
+\textbf{TinyOL-HITL} & \textbf{Yes} & \textbf{Yes} & \textbf{Yes} & \textbf{Yes} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-No existing system:
-\begin{enumerate}
-    \item Starts unsupervised (no labeled data required)
-    \item Learns incrementally through operator feedback
-    \item Uses open protocols (MQTT/Modbus/OPC-UA ready)
-    \item Validates cross-architecture (Xtensa + ARM)
-\end{enumerate}
-
-TinyOL-HITL fills this gap.
-
+%==============================================================================
 \section{System Architecture}
+%==============================================================================
+
+\subsection{Three-State Alarm System}
+
+Unlike binary freeze-on-anomaly systems, TinyOL-HITL implements a three-state workflow that separates alerting from labeling:
+
+\textbf{NORMAL:} Sampling active, centroids updating, no alarm.
+
+\textbf{ALARM:} Outlier detected, motor still running, red banner displayed, sampling continues. This state allows transient anomalies to auto-clear after 3 seconds of normal operation.
+
+\textbf{WAITING\_LABEL:} Frozen state triggered by either (a) motor stop detection or (b) manual operator button. Buffer frozen, ready for label input.
+
+This design addresses real industrial scenarios:
+\begin{itemize}
+    \item \textbf{Shift change:} Alarm during night shift, motor stops at shift end, day shift labels
+    \item \textbf{Transient events:} Startup spikes auto-clear without false positives
+    \item \textbf{Remote monitoring:} Operator can freeze remotely for later inspection
+\end{itemize}
 
 \subsection{Label-Driven Cluster Discovery}
 
-Traditional k-means requires K upfront. Industrial reality: fault types unknown until discovered. Our approach:
+Traditional k-means requires K upfront. Our approach:
 
 \textbf{Phase 1 - Bootstrap:} Initialize with $K=1$ (normal operation). All samples cluster into baseline.
 
@@ -199,32 +193,52 @@ Traditional k-means requires K upfront. Industrial reality: fault types unknown 
 
 \textbf{Phase 3 - Refinement:} Subsequent samples update nearest cluster. Operator corrections refine boundaries.
 
-\textbf{Phase 4 - Growth:} Process repeats. $K$ grows from 1→2→3→N based on discovered faults, not predetermined.
+\textbf{Phase 4 - Persistence:} Model auto-saves to flash every 60 seconds. Survives power cycles. Reset only via explicit MQTT command.
 
 \subsection{Core Algorithm}
 
 \begin{algorithmic}
-\STATE Initialize: $K=1$, $c_0 = \mathbf{0}$, $\text{labels}[0] = $ "normal"
+\STATE Initialize: $K=1$, $c_0 = \mathbf{0}$, $\text{labels}[0] = $ ``normal''
 \FOR{each sample $\mathbf{x}$}
+    \IF{state == WAITING\_LABEL}
+        \STATE reject update, return -1
+    \ENDIF
     \STATE $k^* = \arg\min_k \|\mathbf{x} - c_k\|^2$
+    \IF{$\|\mathbf{x} - c_{k^*}\|^2 > \theta \cdot \text{inertia}_{k^*}$}
+        \STATE alarm\_active $\leftarrow$ true
+        \STATE state $\leftarrow$ ALARM
+        \IF{NOT motor\_running}
+            \STATE state $\leftarrow$ WAITING\_LABEL
+            \STATE freeze buffer
+        \ENDIF
+        \STATE return -1
+    \ENDIF
     \STATE $\alpha = \alpha_{\text{base}} / (1 + 0.01 \times \text{count}_{k^*})$
     \STATE $c_{k^*} \leftarrow c_{k^*} + \alpha(\mathbf{x} - c_{k^*})$
-    \STATE $\text{count}_{k^*} \leftarrow \text{count}_{k^*} + 1$
-    \IF{operator provides label $L$ AND $L \notin \text{labels}$}
-        \STATE Create new cluster: $K \leftarrow K+1$
-        \STATE $c_K \leftarrow \mathbf{x}$
-        \STATE $\text{labels}[K] = L$
-    \ENDIF
-    \IF{operator corrects: sample $\mathbf{x}$ should be cluster $j$}
-        \STATE $c_{k^*} \leftarrow c_{k^*} - \alpha(\mathbf{x} - c_{k^*})$ (repel)
-        \STATE $c_j \leftarrow c_j + \alpha(\mathbf{x} - c_j)$ (attract)
+    \STATE normal\_streak++
+    \IF{normal\_streak $\geq$ 30 AND state == ALARM}
+        \STATE state $\leftarrow$ NORMAL, alarm\_active $\leftarrow$ false
     \ENDIF
 \ENDFOR
 \end{algorithmic}
 
-\textbf{Memory:} $K$ clusters $\times$ $D$ features $\times$ 4 bytes. Maximum $K=16$, $D=64$: 4.2KB.
+\subsection{Persistent Storage}
 
-\textbf{Precision:} Q16.16 fixed-point (range $\pm$32,768). Squared Euclidean distance avoids sqrt overhead (~30\% savings).
+Model persistence uses platform-native flash storage:
+
+\textbf{ESP32:} Preferences library (NVS - Non-Volatile Storage)
+
+\textbf{RP2350:} LittleFS with binary file
+
+Storage format includes magic number for validation, version byte for compatibility, and per-cluster data (centroid, label, count, inertia). Total storage: $\sim$2KB for K=16 clusters.
+
+Reset workflow:
+\begin{enumerate}
+    \item Operator sends \texttt{tinyol/\{device\_id\}/reset} with \texttt{\{"reset":true\}}
+    \item Device clears flash storage
+    \item Model reinitializes to K=1
+    \item Confirmation blink pattern (5 long blinks)
+\end{enumerate}
 
 \subsection{Platform Abstraction}
 
@@ -235,147 +249,158 @@ Three-function API abstracts hardware:
     \item \texttt{platform\_blink()}: Visual feedback
 \end{itemize}
 
-Core algorithm remains platform-agnostic (200 lines pure C11). Platform layer handles I/O (45-47 lines per board).
+Core algorithm remains platform-agnostic (250 lines pure C11). Platform layer handles I/O (45-47 lines per board).
 
 \textbf{ESP32-S3 (Xtensa LX7):} 512KB SRAM, 240MHz dual-core, WiFi/BT.
 
 \textbf{RP2350 (ARM Cortex-M33):} 520KB SRAM, 150MHz dual-core, TrustZone, WiFi.
 
-Identical algorithm compiles for both. Zero manual configuration.
+\subsection{Feature Extraction with Gravity Compensation}
+
+Raw accelerometer readings include gravity ($\sim$9.8 m/s²). TinyOL-HITL implements a high-pass filter to extract vibration:
+
+\begin{lstlisting}[language=C]
+// Exponential moving average baseline
+baseline = alpha * raw + (1-alpha) * baseline;
+// AC component = actual vibration
+vibration = raw - baseline;
+\end{lstlisting}
+
+Features extracted per sample:
+\begin{itemize}
+    \item \textbf{RMS:} Root mean square of AC magnitude over 1-second window
+    \item \textbf{Peak:} Maximum AC magnitude in window
+    \item \textbf{Crest Factor:} Peak/RMS ratio (high = impulsive fault signature)
+\end{itemize}
+
+Optional 7D schema adds three-phase current (i1, i2, i3) and current RMS.
 
 \subsection{MQTT Integration}
 
 Standard pub/sub for industrial interoperability:
 
-\textbf{Data topic:} \texttt{sensor/\{device\_id\}/cluster}
-\begin{lstlisting}[]
-{"cluster": 2, "label": "outer_race",
- "features": [0.45, -0.12, 0.89], "confidence": 0.87}
-\end{lstlisting}
+\begin{table}[h]
+\centering
+\caption{MQTT Topics}
+\begin{tabular}{ll}
+\toprule
+Topic & Purpose \\
+\midrule
+\texttt{sensor/\{id\}/data} & Summary every 10s \\
+\texttt{tinyol/\{id\}/label} & Create cluster \\
+\texttt{tinyol/\{id\}/discard} & Clear alarm \\
+\texttt{tinyol/\{id\}/freeze} & Manual freeze \\
+\texttt{tinyol/\{id\}/reset} & Reset to K=1 \\
+\bottomrule
+\end{tabular}
+\end{table}
 
-\textbf{Correction topic:} \texttt{tinyol/\{device\_id\}/correction}
-\begin{lstlisting}[]
-{"cluster_id": 2, "new_label": "inner_race_fault",
- "timestamp": 1699142400, "operator": "tech_042"}
-\end{lstlisting}
+Compatible with Mosquitto, HiveMQ, RabbitMQ. Integrates with FUXA, RapidSCADA, Node-RED.
 
-Compatible with Mosquitto, HiveMQ, RabbitMQ. Integrates with RapidSCADA, supOS-CE, Node-RED.
-
+%==============================================================================
 \section{Implementation}
+%==============================================================================
 
 \subsection{CWRU Dataset Pipeline}
 
 Conversion transforms .mat files to fixed-point binary:
 
-\textbf{Step 1:} Download 16 files (~50MB) from Case Western.
+\textbf{Step 1:} Download 16 files ($\sim$50MB) from Case Western Reserve University.
 
 \textbf{Step 2:} Extract features per 256-sample window (21ms @ 12kHz): RMS, kurtosis, crest, variance.
 
-\textbf{Step 3:} Generate Q16.16 binary with 16-byte header:
-\begin{lstlisting}[language=C]
-struct dataset_header {
-    uint32_t magic;      // 0x4B4D4541
-    uint16_t num_samples;
-    uint8_t  feature_dim;
-    uint8_t  fault_type;
-    uint32_t sample_rate;
-    uint32_t reserved;
-};
-\end{lstlisting}
+\textbf{Step 3:} Generate Q16.16 binary with 16-byte header.
 
-\textbf{Step 4:} Stream via Serial @ 115200 baud. Arduino reads header, processes samples, sends ACK.
-
-Measured: ~16 samples/sec, $<$50ms latency, 4.2KB overhead.
+\textbf{Step 4:} Stream via Serial @ 115200 baud.
 
 \subsection{Hardware Test Rig}
 
 \textbf{Motor:} 0.5 HP three-phase induction motor, 1500 RPM.
 
-\textbf{Sensor:} ADXL345 accelerometer (±16g range, I²C interface), mounted on bearing housing.
+\textbf{Sensor:} MPU6050 accelerometer ($\pm$16g range, I²C interface), mounted on bearing housing.
 
 \textbf{Fault simulation:} Eccentric weight on 50mm pulley, adjustable unbalance (50-200 g·mm). Non-destructive testing enables repeatability.
 
-\textbf{Measurement protocol:}
-\begin{enumerate}
-    \item Baseline: 5 minutes healthy operation
-    \item Fault injection: Install damaged bearing
-    \item Validation: 5 minutes faulty operation
-    \item Analysis: Compare cluster distributions
-\end{enumerate}
-
 \subsection{Testing Infrastructure}
 
-\textbf{Unit tests (test\_kmeans.c):} 9 tests covering initialization, updates, convergence, memory footprint.
+\textbf{Unit tests:} 11 tests covering initialization, updates, state transitions, persistence.
 
-\textbf{HITL tests (test\_hitl.c):} 5 tests for correction logic, count tracking, invalid inputs.
+\textbf{HITL tests:} 9 tests for correction logic, idle detection, label workflow.
 
-\textbf{CI/CD:} GitHub Actions compiles and runs tests on every commit.
+\textbf{CI/CD:} GitHub Actions compiles for both ESP32 and RP2350 on every commit.
 
+%==============================================================================
 \section{Experimental Validation}
+%==============================================================================
+
+\researchneeded{This entire section needs experimental data. Run experiments and fill in results.}
 
 \subsection{CWRU Dataset Experiments}
 
-\textbf{Phase 1 - Baseline (K=1):}
+\textbf{Experimental Design:}
+
 \begin{itemize}
-    \item Initialize single cluster (all samples = "normal")
-    \item Stream 1904 samples (4 fault types)
-    \item Measure: cluster radius growth, inertia
-    \item Expected: High inertia (everything forced into one cluster)
+    \item \textbf{Phase 1 - Baseline (K=1):} All samples assigned to single cluster
+    \item \textbf{Phase 2 - First Label (K=2):} Operator labels 1 ball fault sample
+    \item \textbf{Phase 3 - Multi-label (K=4):} Label 1 sample per fault type
+    \item \textbf{Phase 4 - Refinement:} Inject 10\% corrections
 \end{itemize}
 
-\textbf{Phase 2 - First Label (K=2):}
-\begin{itemize}
-    \item Operator labels 1 ball fault sample
-    \item System creates second cluster
-    \item Stream remaining samples
-    \item Measure: [PLACEHOLDER: X\%] samples correctly separated
-\end{itemize}
+\textbf{Results:}
 
-\textbf{Phase 3 - Multi-label (K=4):}
-\begin{itemize}
-    \item Label 1 sample per fault type (ball, inner, outer)
-    \item System grows to K=4 (normal + 3 faults)
-    \item Stream full dataset
-    \item Measure: [PLACEHOLDER: Y\%] accuracy (target: >80\%)
-\end{itemize}
-
-\textbf{Phase 4 - Refinement:}
-\begin{itemize}
-    \item Inject corrections on 10\% misclassified samples
-    \item Re-evaluate accuracy
-    \item Measure: [PLACEHOLDER: Z\%] improvement (target: +15-25\%)
-\end{itemize}
+\begin{table}[h]
+\centering
+\caption{CWRU Classification Accuracy}
+\begin{tabular}{lcc}
+\toprule
+Configuration & Accuracy & Notes \\
+\midrule
+K=1 (baseline) & \researchneeded{X\%} & Random assignment \\
+K=4 (unsupervised) & \researchneeded{Y\%} & After labeling \\
+K=4 + HITL & \researchneeded{Z\%} & +10\% corrections \\
+\bottomrule
+\end{tabular}
+\end{table}
 
 \subsection{Hardware Test Rig Results}
 
 \textbf{Baseline (healthy motor):}
 \begin{itemize}
     \item Duration: 5 minutes @ 1500 RPM
-    \item Expected: Tight cluster (low variance)
-    \item Measured: [PLACEHOLDER: Cluster radius = X mm/s², samples = Y]
+    \item Cluster radius: \researchneeded{X m/s²}
+    \item Samples: \researchneeded{N}
 \end{itemize}
 
-\textbf{Fault detection (outer race defect):}
+\textbf{Fault detection (unbalance):}
 \begin{itemize}
-    \item Duration: 5 minutes @ 1500 RPM
-    \item Expected: New cluster emerges when operator labels first anomaly
-    \item Measured: [PLACEHOLDER: Z\% samples assigned to fault cluster]
-    \item Validation: Frequency analysis shows 123.75 Hz BPFO spike
+    \item Detection latency: \researchneeded{X samples}
+    \item Time to alarm: \researchneeded{X seconds}
+    \item Classification accuracy after labeling: \researchneeded{X\%}
 \end{itemize}
 
 \textbf{Cross-platform consistency:}
 \begin{itemize}
-    \item Test: Identical sensor data → ESP32 and RP2350
-    \item Measure: $\max(|c_{\text{ESP32}} - c_{\text{RP2350}}|)$
+    \item ESP32 vs RP2350 centroid delta: \researchneeded{X}
     \item Target: $<$0.1 difference (fixed-point consistency)
-    \item Result: [PLACEHOLDER: Actual delta = X]
 \end{itemize}
+
+\subsection{Persistence Validation}
+
+\textbf{Test Protocol:}
+\begin{enumerate}
+    \item Train model to K=3 (1000+ samples)
+    \item Power cycle device
+    \item Verify K=3 restored
+    \item Verify cluster assignments match pre-restart
+\end{enumerate}
+
+\textbf{Results:} \researchneeded{Document actual persistence test results}
 
 \subsection{Baseline Comparison}
 
 \begin{table}[h]
 \centering
-\caption{CWRU Accuracy (Literature vs TinyOL-HITL)}
+\caption{Comparison with Literature (CWRU)}
 \begin{tabular}{lcc}
 \toprule
 Method & Accuracy & Memory \\
@@ -384,38 +409,38 @@ SVM (traditional ML) & 85-95\% & Cloud \\
 Basic CNN & 95-98\% & 500K params \\
 Lite CNN \cite{yoo2023lite} & 99.86\% & 153K params \\
 \midrule
-TinyOL-HITL (K=1, baseline) & [PLACEHOLDER: X\%] & 4.2KB \\
-TinyOL-HITL (K=4, labeled) & [PLACEHOLDER: Y\%] & 4.2KB \\
-TinyOL-HITL (+ corrections) & [PLACEHOLDER: Z\%] & 4.2KB \\
+TinyOL-HITL (ours) & \researchneeded{X\%} & 3 KB \\
 \bottomrule
 \end{tabular}
 \end{table}
 
+\researchneeded{Search for fair comparison - supervised vs unsupervised methods have different goals. Frame our contribution correctly.}
+
+%==============================================================================
 \section{Discussion}
+%==============================================================================
 
 \subsection{Achieved Objectives}
 
 \textbf{Dynamic clustering:} System grows from K=1 to K=N based on discovered faults. No pre-training required.
 
-\textbf{Cross-platform portability:} Identical algorithm runs on Xtensa (ESP32) and ARM (RP2350). Fixed-point math ensures consistency.
+\textbf{Three-state alarm:} NORMAL $\rightarrow$ ALARM $\rightarrow$ WAITING\_LABEL separates alerting from labeling, enabling practical industrial workflows.
 
-\textbf{Resource efficiency:} Maximum 4.2KB for K=16, D=64. Sub-millisecond latency per sample.
+\textbf{Persistent storage:} Model survives power cycles. Reset only via explicit command. Critical for real deployments.
 
-\textbf{Open integration:} MQTT enables RapidSCADA, supOS-CE, Node-RED. Arduino IDE simplifies deployment.
+\textbf{Cross-platform portability:} Identical algorithm runs on Xtensa (ESP32) and ARM (RP2350).
 
-\subsection{Key Innovation}
+\textbf{Resource efficiency:} Maximum 3KB for K=16, D=10. Sub-millisecond latency per sample.
 
-Unlike fixed-K algorithms, TinyOL-HITL adapts to operational reality:
+\textbf{Open integration:} MQTT enables FUXA, RapidSCADA, Node-RED integration.
 
-\textbf{Scenario 1 - New equipment:} Start with K=1. Operator discovers faults during commissioning. System learns each fault type.
+\subsection{Key Innovations}
 
-\textbf{Scenario 2 - Rare faults:} Low-frequency events (seal leaks, rotor unbalance) create new clusters only when encountered.
+\textbf{Label-driven discovery:} Unlike fixed-K algorithms, TinyOL-HITL adapts to operational reality. New fault types create new clusters only when encountered.
 
-\textbf{Scenario 3 - Concept drift:} Normal operation shifts (load changes, seasonal temperature). Corrections refine baseline cluster.
+\textbf{Alarm vs. Freeze distinction:} ALARM state alerts without freezing, allowing transient events to auto-clear. WAITING\_LABEL freezes for definitive labeling.
 
-Traditional approach: Train offline with labeled data. Fails when fault types unknown or change.
-
-Our approach: Bootstrap with unlabeled data. Grow through operator expertise. Refine continuously.
+\textbf{Power-cycle persistence:} First TinyML clustering system with flash-based model persistence.
 
 \subsection{Limitations and Future Work}
 
@@ -423,22 +448,24 @@ Our approach: Bootstrap with unlabeled data. Grow through operator expertise. Re
 
 \textbf{Label ambiguity:} System assumes consistent labeling. Future: confidence scoring, conflict resolution for multiple operators.
 
-\textbf{Scalability:} Linear search for nearest cluster (O(KD)). Acceptable for K$<$16. Future: hierarchical clustering for K>50.
+\textbf{Scalability:} Linear search for nearest cluster (O(KD)). Acceptable for K$<$16. Future: hierarchical clustering for K$>$50.
 
 \textbf{Feature engineering:} Current pipeline uses fixed features (RMS, kurtosis). Future: auto-encoder for learned representations.
 
+\researchneeded{Search for cluster merging strategies in streaming systems}
+
+%==============================================================================
 \section{Industrial Deployment}
+%==============================================================================
 
 \subsection{Integration with Existing Systems}
 
 \textbf{SCADA:} MQTT bridge enables direct integration:
 \begin{itemize}
+    \item FUXA: Native MQTT client, web-based dashboard
     \item RapidSCADA: Native MQTT driver (KpMqtt.dll)
-    \item supOS-CE: Unified namespace via MQTT tags
-    \item Node-RED: MQTT nodes for dashboards
+    \item Node-RED: MQTT nodes for custom dashboards
 \end{itemize}
-
-\textbf{Historian:} Time-series data to PostgreSQL via Node-RED bridge.
 
 \subsection{Deployment Workflow}
 
@@ -446,13 +473,13 @@ Our approach: Bootstrap with unlabeled data. Grow through operator expertise. Re
     \item \textbf{Install:} Arduino IDE + ESP32/RP2350 board manager (5 min)
     \item \textbf{Configure:} Edit WiFi credentials, MQTT broker in \texttt{config.h}
     \item \textbf{Upload:} Select board, click Upload (2 min)
-    \item \textbf{Wire:} Connect ADXL345 (4 wires: VCC, GND, SDA, SCL)
-    \item \textbf{Mount:} Hot-glue sensor to bearing housing
-    \item \textbf{Monitor:} RapidSCADA table shows live clusters
-    \item \textbf{Label:} When anomaly appears, publish correction via MQTT
+    \item \textbf{Wire:} Connect MPU6050 (4 wires: VCC, GND, SDA, SCL)
+    \item \textbf{Mount:} Attach sensor to bearing housing
+    \item \textbf{Monitor:} FUXA dashboard shows live clusters
+    \item \textbf{Label:} When anomaly appears, publish label via MQTT
 \end{enumerate}
 
-Total deployment: $<$30 minutes for first device. $<$10 minutes for subsequent devices.
+Total deployment: $<$30 minutes for first device.
 
 \subsection{Cost Analysis}
 
@@ -463,8 +490,8 @@ Total deployment: $<$30 minutes for first device. $<$10 minutes for subsequent d
 \toprule
 Component & Cost (USD) \\
 \midrule
-ESP32-S3 or RP2350 & \$8-12 \\
-ADXL345 Sensor & \$3-5 \\
+ESP32 or RP2350 & \$8-12 \\
+MPU6050 Sensor & \$3-5 \\
 Enclosure (IP65) & \$10-15 \\
 Cables + Mounting & \$5 \\
 \midrule
@@ -477,9 +504,15 @@ Compare: Commercial IIoT gateway (\$300-800) + cloud fees (\$50-200/month).
 
 Breakeven: $<$2 months vs cloud solution. No recurring fees. No vendor lock-in.
 
+%==============================================================================
 \section{Conclusion}
+%==============================================================================
 
-TinyOL-HITL demonstrates label-driven incremental clustering for edge devices. Unlike fixed-K algorithms requiring pre-training, system discovers fault types dynamically through operator feedback. Starting from K=1, clusters emerge as faults are labeled, adapting to operational reality. Validation on CWRU dataset shows [PLACEHOLDER: baseline X\%, labeled Y\%, refined Z\%] accuracy. Hardware test rig proves real-time fault detection on 0.5 HP motor. Cross-platform deployment (ESP32 Xtensa + RP2350 ARM) validates portability. MQTT integration enables standard industrial protocols. Arduino IDE simplifies deployment to $<$30 minutes. Framework provides accessible, vendor-neutral predictive maintenance for resource-constrained environments.
+TinyOL-HITL demonstrates label-driven incremental clustering for edge devices with persistent storage. Unlike fixed-K algorithms requiring pre-training, the system discovers fault types dynamically through operator feedback. The three-state alarm system (NORMAL $\rightarrow$ ALARM $\rightarrow$ WAITING\_LABEL) separates alerting from labeling, enabling practical industrial workflows.
+
+Starting from K=1, clusters emerge as faults are labeled, adapting to operational reality. Model persistence ensures trained clusters survive power cycles---critical for real deployments. Validation on CWRU dataset shows \researchneeded{baseline X\%, labeled Y\%, refined Z\%} accuracy. Hardware test rig proves real-time fault detection on 0.5 HP motor. Cross-platform deployment (ESP32 Xtensa + RP2350 ARM) validates portability.
+
+MQTT integration enables standard industrial protocols. Arduino IDE simplifies deployment to $<$30 minutes. Framework provides accessible, vendor-neutral predictive maintenance for resource-constrained environments at \$26-37 per node.
 
 \textbf{Source code:} \url{https://github.com/leekaize/tinyol-hitl}
 

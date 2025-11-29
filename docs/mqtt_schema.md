@@ -23,6 +23,8 @@ stateDiagram-v2
     note right of WAITING_LABEL: Frozen<br/>Ready for input
 ```
 
+---
+
 ## Topic Structure
 
 ```
@@ -30,6 +32,7 @@ sensor/{device_id}/data          # Summary every 10s
 tinyol/{device_id}/label         # Operator label
 tinyol/{device_id}/discard       # Operator discard
 tinyol/{device_id}/freeze        # Manual freeze button
+tinyol/{device_id}/reset         # Reset model to K=1 (clears storage) [NEW]
 ```
 
 ---
@@ -41,6 +44,7 @@ tinyol/{device_id}/freeze        # Manual freeze button
 {
   "device_id": "motor_01",
   "state": "NORMAL",
+  "total_points": 12500,  // Total training samples (persisted)
   "cluster": 0,
   "label": "normal",
   "k": 1,
@@ -63,6 +67,7 @@ tinyol/{device_id}/freeze        # Manual freeze button
 {
   "device_id": "motor_01",
   "state": "ALARM",
+  "total_points": 12500,  // Total training samples (persisted)
   "cluster": -1,
   "label": "unknown",
   "k": 1,
@@ -82,6 +87,7 @@ tinyol/{device_id}/freeze        # Manual freeze button
 {
   "device_id": "motor_01",
   "state": "WAITING_LABEL",
+  "total_points": 12500,  // Total training samples (persisted)
   "cluster": -1,
   "label": "unknown",
   "k": 1,
@@ -135,6 +141,26 @@ tinyol/{device_id}/freeze        # Manual freeze button
 - Works in `ALARM` state
 - Transitions to `WAITING_LABEL`
 - Use when operator wants to label during motor run
+
+### Reset Model (clear storage, return to K=1)
+```json
+{"reset": true}
+```
+
+**Topic:** `tinyol/{device_id}/reset`
+
+**Behavior:**
+- Clears flash storage (NVS on ESP32, LittleFS on RP2350)
+- Reinitializes model to K=1 with "normal" baseline
+- Clears all alarm states
+- Visual feedback: 5 long blinks
+
+**Use Cases:**
+1. New equipment installation (start fresh)
+2. Major equipment overhaul (retrain from scratch)
+3. Testing/development (clean slate)
+
+**Warning:** This permanently deletes all trained clusters. Consider backing up cluster labels before reset.
 
 ---
 
@@ -215,4 +241,9 @@ mosquitto_pub -t "tinyol/test/label" -m '{"label":"unbalance"}'
 
 # Discard
 mosquitto_pub -t "tinyol/test/discard" -m '{"discard":true}'
+
+# Reset model to K=1
+mosquitto_pub -h localhost \
+  -t "tinyol/test_device/reset" \
+  -m '{"reset":true}'
 ```

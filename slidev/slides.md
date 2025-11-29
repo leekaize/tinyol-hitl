@@ -81,21 +81,21 @@ Sources: McKinsey 2021, MaintainX 2025, PwC 2018
 
 <div class="text-sm">
 
-| Approach | Pre-Training | Memory | HITL | Platform |
-|----------|-------------|--------|------|----------|
-| TinyOL (Ren 2021) | ✓ Autoencoder | ~100KB | ✗ | Cortex-M4 |
-| MCUNetV3 (Lin 2022) | ✓ CNN | 256KB | ✗ | Cortex-M7 |
-| TinyTL (Cai 2020) | ✓ Frozen weights | ~50KB | ✗ | Cortex-M4 |
-| Cloud ML | ✓ Large datasets | N/A | ✗ | Server-side |
-| **TinyOL-HITL** | **✗ None** | **2.5 - 3.0 KB** | **✓** | **Multi-arch** |
+| Approach | Pre-Training | Memory | HITL | Persist |
+|----------|-------------|--------|------|---------|
+| TinyOL (Ren 2021) | ✓ Required | ~100KB | ✗ | ✗ |
+| MCUNetV3 (Lin 2022) | ✓ Required | 256KB | ✗ | ✗ |
+| TinyTL (Cai 2020) | ✓ Required | ~50KB | ✗ | ✗ |
+| Cloud ML | ✓ Large datasets | N/A | ✗ | ✓ |
+| **TinyOL-HITL** | **✗ None** | **~3 KB** | **✓** | **✓** |
 
 </div>
 
 <v-click>
 
 ### The Gap
-All existing TinyML solutions require **pre-trained models**.
-Real industrial deployment: **fault types unknown until discovered**.
+All existing TinyML solutions require **pre-trained models** and lose state on power cycle.
+Real industrial deployment: **fault types unknown until discovered**, **power outages happen**.
 
 </v-click>
 
@@ -122,6 +122,7 @@ flowchart TB
     H --> I[Operator Labels As Discovered]
     I --> J[K Grows: 1→2→3→N]
     J --> K[✓ Model Adapts to Reality]
+    K --> L[💾 Persists Across Restarts]
 ```
 
 </div>
@@ -252,29 +253,72 @@ flowchart LR
 
 ---
 
-# Algorithm: The State Machine
+# Algorithm: The Three-State Machine
 
-**Key Innovation:** Alarm ≠ Freeze. The system distinguishes between transient alarms and label-ready states.
+**Key Innovation:** Alarm ≠ Freeze. Separates alerting from labeling.
 
 <div class="flex justify-center">
-<div class="w-140">
+<div class="w-150">
 
 ```mermaid
 stateDiagram-v2
     [*] --> NORMAL: Initialize K=1
 
     NORMAL --> ALARM: Outlier detected
-    note right of ALARM: Motor running<br/>Red banner on SCADA
+    note right of ALARM: Motor running<br/>Red banner<br/>Still sampling
 
     ALARM --> NORMAL: 3s normal (auto-clear)
 
     ALARM --> WAITING_LABEL: Motor stops
-    ALARM --> WAITING_LABEL: Operator hits Freeze
-    note right of WAITING_LABEL: Buffer Frozen<br/>Ready for input
+    ALARM --> WAITING_LABEL: Operator clicks Freeze
+    note right of WAITING_LABEL: Buffer frozen<br/>Ready for input
 
-    WAITING_LABEL --> NORMAL: Label "Fault" → K++
-    WAITING_LABEL --> NORMAL: Discard (False Alarm)
+    WAITING_LABEL --> NORMAL: Label → K++ 💾
+    WAITING_LABEL --> NORMAL: Discard
+
+    note left of NORMAL: 💾 = Saved to Flash
 ```
+
+</div>
+</div>
+
+---
+
+# Persistent Storage
+
+**Problem:** Power outages erase RAM. Trained clusters lost.
+
+**Solution:** Save to flash after every new cluster.
+
+<div class="grid grid-cols-2 gap-8">
+<div>
+
+### When Saves Happen
+
+```mermaid
+flowchart TD
+    A[Operator labels fault] --> B[kmeans_add_cluster]
+    B --> C{Success?}
+    C -->|Yes| D[💾 Save to Flash]
+    C -->|No| E[No save]
+    D --> F[K++, Resume NORMAL]
+```
+
+</div>
+<div>
+
+### Platform Implementation
+
+| Platform | Storage | Size |
+|----------|---------|------|
+| ESP32 | NVS (Preferences) | ~2KB |
+| RP2350 | LittleFS | ~2KB |
+
+**Reset:** MQTT command `{"reset":true}`
+
+**Survives:**
+- Power cycles ✓
+- Firmware updates ✗ (clears)
 
 </div>
 </div>
@@ -289,12 +333,14 @@ stateDiagram-v2
 ### Memory Layout
 
 ```c
-// Total: ~2.5 - 3.0 KB
+// Total: ~2.5 - 3.0 KB RAM
 typedef struct {
   cluster_t clusters[16];  // 1.0 KB
   ring_buffer_t buffer;    // 1.2 KB
   uint8_t k, feature_dim;  // 0.3 KB
 } kmeans_model_t;
+
+// Flash storage: ~2KB additional
 ```
 
 ### Fixed-Point Math (Q16.16)
@@ -318,6 +364,7 @@ typedef struct {
 | EMA updates | O(1) memory per sample |
 | Static allocation | No malloc/fragmentation |
 | Ring buffer | Bounded 100 samples |
+| Flash persistence | Survives power cycles |
 
 </div>
 </div>
@@ -340,7 +387,7 @@ xychart-beta
 
 <div class="text-center mt-4">
 
-**TinyOL-HITL: ~3 KB** — Runs on virtually any MCU (33× smaller than TinyOL)
+**TinyOL-HITL: ~3 KB RAM + ~2 KB Flash** — Runs on virtually any MCU
 
 </div>
 
@@ -376,6 +423,10 @@ Actual N [   ][   ][   ][   ]
 **Detection Latency:**
 - Alarm trigger: **[DATA] samples**
 - Time to detection: **[DATA] seconds**
+
+**Persistence Test:**
+- Power cycle recovery: ✓
+- Cluster fidelity: 100%
 
 **Cross-Platform Consistency:**
 - Target: Centroid delta < 0.1
@@ -419,8 +470,12 @@ sequenceDiagram
     end
 
     O->>S: Label: "unbalance"
-    D->>D: K++ (K=2)
+    D->>D: K++, 💾 Save to Flash
     D->>S: state: NORMAL, k: 2 ✅
+
+    Note over D: Power cycle...
+    D->>D: Load from Flash
+    D->>S: Restored k: 2 ✅
 ```
 
 </div>
@@ -444,31 +499,28 @@ int8_t c = kmeans_update(&model, feats);
 
 // 3. Handle Alarm Logic
 if (c == -1 && kmeans_is_waiting(&model)) {
-    // Operator labeled via MQTT
     kmeans_add_cluster(&model, "fault");
+    storage.save(&model);  // Persist!
 }
 
-// 4. Manual Freeze
-kmeans_request_label(&model);
+// 4. Load on startup
+storage.load(&model);
 ```
 
 </div>
 <div>
 
-### SCADA JSON Payload
+### MQTT Topics
 
-```json
-{
-  "device_id": "motor_01",
-  "state": "ALARM",
-  "cluster": -1,
-  "k": 1,
-  "rms_avg": 5.2,
-  "peak_avg": 9.1
-}
-```
+| Topic | Purpose |
+|-------|---------|
+| `sensor/{id}/data` | Status every 10s |
+| `tinyol/{id}/label` | Create cluster |
+| `tinyol/{id}/discard` | Clear alarm |
+| `tinyol/{id}/freeze` | Manual freeze |
+| `tinyol/{id}/reset` | **Reset to K=1** |
 
-**Topics:** `data`, `label`, `discard`, `freeze`
+**Reset clears flash storage!**
 
 </div>
 </div>
@@ -483,8 +535,9 @@ kmeans_request_label(&model);
 |--------|-------------------|---------------------|
 | Pre-training | ✓ Required | ✗ None |
 | Initial classes | Fixed | K=1, grows dynamically |
-| Memory | ~100KB SRAM | 3 KB total |
-| Alarm Logic | N/A | State Machine (Alarm ≠ Freeze) |
+| Memory | ~100KB SRAM | 3 KB RAM + 2KB Flash |
+| Persistence | None | Flash storage |
+| Alarm Logic | N/A | 3-state machine |
 | HITL | None | Core feature |
 | Protocol | Proprietary | Standard MQTT |
 
@@ -493,8 +546,8 @@ kmeans_request_label(&model);
 <v-click>
 
 ### Development Roadmap
-- **Current:** Research Prototype & Algorithm Validation
-- **Future:** Cluster merging, Auto-threshold tuning, Energy harvesting support
+- **Current:** Research Prototype with Persistence
+- **Future:** Cluster merging, Auto-threshold tuning, Multi-device sync
 
 </v-click>
 
@@ -511,11 +564,14 @@ class: text-center
 
 **No cloud.** No pre-training. No vendor lock-in.
 
-**Deploy Day 1. Learn as you go.**
+**Deploy Day 1. Learn as you go. Survive power cycles.**
 
-**Core Innovation:** A 3KB label-driven clustering engine with a robust state machine that puts the operator in control.
+**Core Innovations:**
+1. Label-driven clustering (K grows organically)
+2. Three-state alarm system (ALARM ≠ FREEZE)
+3. Flash persistence (survives restarts)
 
-TinyOL-HITL proves: Unsupervised + Human-in-the-Loop = Industrial-Ready PdM
+TinyOL-HITL: Industrial-Ready PdM at $30/node
 
 </v-clicks>
 

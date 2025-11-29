@@ -59,22 +59,23 @@ cp core/config.template.h core/config.h
 # ADXL345/MPU6050 → I2C (SDA=21, SCL=22 for ESP32)
 ```
 
-## API (8 functions)
+## API (9 functions)
 
 ```c
-// Initialize
+// Core
 kmeans_init(&model, 3, 0.2f);
-
-// Stream samples
 int8_t cluster = kmeans_update(&model, features);
+kmeans_add_cluster(&model, "fault_name");
 
-// Handle outliers
-if (cluster == -1) {
-    kmeans_add_cluster(&model, "bearing_fault");  // K++
-}
+// Persistence (NEW)
+storage.begin();
+storage.load(&model);   // On startup
+storage.save(&model);   // After add_cluster
+storage.clear();        // On reset command
 ```
 
 See [docs/API.md](docs/API.md) for complete reference.
+
 
 ## Architecture
 
@@ -98,6 +99,29 @@ flowchart TB
     H --> F
     E --> I
 ```
+
+## Persistent Storage (NEW)
+
+Trained clusters survive power cycles.
+
+```mermaid
+flowchart LR
+    A[Label Fault] --> B[K++]
+    B --> C[💾 Save to Flash]
+    C --> D[Power Off]
+    D --> E[Power On]
+    E --> F[Load from Flash]
+    F --> G[Resume K clusters]
+```
+
+**When saves happen:** Immediately after each new cluster
+
+**Reset model:** `mosquitto_pub -t "tinyol/{device_id}/reset" -m '{"reset":true}'`
+
+**Platform storage:**
+- ESP32: NVS (Preferences library)
+- RP2350: LittleFS
+
 
 ## Memory Footprint
 

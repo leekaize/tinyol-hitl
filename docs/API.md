@@ -188,3 +188,147 @@ void loop() {
 ```json
 {"discard": true}
 ```
+
+---
+
+## Storage API (Persistence)
+
+Model survives power cycles via flash storage.
+
+### Storage Workflow
+
+```mermaid
+flowchart TD
+    A[Device Boot] --> B{Saved model exists?}
+    B -->|Yes| C[storage.load]
+    B -->|No| D[kmeans_init K=1]
+    C --> E[Resume with K clusters]
+    D --> E
+
+    E --> F[Normal operation...]
+    F --> G[Operator labels fault]
+    G --> H[kmeans_add_cluster]
+    H --> I[storage.save]
+    I --> F
+
+    J[MQTT reset command] --> K[storage.clear]
+    K --> D
+```
+
+---
+
+### `storage.begin()`
+Initialize flash storage subsystem.
+
+```c
+ModelStorage storage;
+storage.begin();  // Call once in setup()
+```
+
+**Returns:** `true` if successful
+
+---
+
+### `storage.save()`
+Save model to flash. Call after `kmeans_add_cluster()`.
+
+```c
+if (kmeans_add_cluster(&model, "fault_name")) {
+    storage.save(&model);  // Persist immediately
+}
+```
+
+**Returns:** `true` if successful
+
+---
+
+### `storage.load()`
+Load saved model from flash.
+
+```c
+// In setup(), after kmeans_init():
+if (storage.hasModel()) {
+    storage.load(&model);  // Overwrites default K=1
+}
+```
+
+**Returns:** `true` if valid model loaded
+
+---
+
+### `storage.hasModel()`
+Check if valid saved model exists.
+
+```c
+if (storage.hasModel()) {
+    Serial.println("Found saved model");
+}
+```
+
+**Returns:** `true` if valid model in storage
+
+---
+
+### `storage.clear()`
+Erase saved model. Used by reset command.
+
+```c
+// MQTT reset handler:
+if (doc["reset"] == true) {
+    storage.clear();
+    kmeans_reset(&model);
+}
+```
+
+---
+
+### Complete Example
+
+```c
+#include "model_storage.h"
+
+kmeans_model_t model;
+ModelStorage storage;
+
+void setup() {
+    storage.begin();
+    kmeans_init(&model, 3, 0.2f);
+
+    // Try to restore saved model
+    if (storage.hasModel()) {
+        storage.load(&model);
+        Serial.printf("Restored K=%d\n", model.k);
+    }
+}
+
+void onLabel(const char* label) {
+    if (kmeans_add_cluster(&model, label)) {
+        storage.save(&model);  // Persist!
+    }
+}
+
+void onReset() {
+    storage.clear();
+    kmeans_reset(&model);
+}
+```
+
+---
+
+### Storage Format
+
+| Field | Size | Description |
+|-------|------|-------------|
+| Magic | 4 bytes | `0x544F4C48` ("TOLH") |
+| Version | 1 byte | Format version |
+| K | 1 byte | Number of clusters |
+| Feature dim | 1 byte | Features per sample |
+| Reserved | 1 byte | Future use |
+| Total points | 4 bytes | Cumulative training count |
+| Threshold | 4 bytes | Outlier threshold |
+| Learning rate | 4 bytes | EMA rate |
+| Clusters | Variable | K × cluster data |
+
+Per-cluster: centroid (D×4 bytes) + count (4) + inertia (4) + label (32) + active (1)
+
+**Total for K=4, D=7:** ~500 bytes

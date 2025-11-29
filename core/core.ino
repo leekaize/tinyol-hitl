@@ -8,11 +8,13 @@
  * - Freeze-on-alarm (Human-in-the-loop) workflow
  * - MQTT integration for SCADA/Dashboard
  * - Cross-platform (ESP32/RP2350)
+ * - **NEW: Persistent model storage (survives power cycles)**
  */
 
 #include "config.h"
 #include "streaming_kmeans.h"
 #include "feature_extractor.h"
+#include "model_storage.h"  // NEW: Persistence
 #include <Wire.h>
 
 #ifndef LED_BUILTIN
@@ -55,6 +57,7 @@
 // =============================================================================
 
 kmeans_model_t model;
+ModelStorage storage;  // NEW: Persistence handler
 
 #ifdef USE_CURRENT
   CurrentSensor currentSensor;
@@ -67,6 +70,7 @@ kmeans_model_t model;
   char topic_label[64];
   char topic_discard[64];
   char topic_freeze[64];
+  char topic_reset[64];  // NEW: Reset topic
   unsigned long lastMqttAttempt = 0;
 #endif
 
@@ -97,7 +101,7 @@ void setup() {
   delay(2000); // Wait for Serial
   
   Serial.println("\n========================================");
-  Serial.println("TinyOL-HITL v3.1 (Debug + Fixes)");
+  Serial.println("TinyOL-HITL v3.2 (Persistent Storage)");
   Serial.println("========================================");
   
   #ifdef ESP32
@@ -110,6 +114,15 @@ void setup() {
   Serial.printf("Model size: %d bytes\n", sizeof(kmeans_model_t));
   
   pinMode(LED_BUILTIN, OUTPUT);
+
+  // NEW: Initialize storage FIRST
+  Serial.print("[Storage] Initializing... ");
+  if (!storage.begin()) {
+    Serial.println("FAILED!");
+  } else {
+    Serial.println("OK");
+    storage.printStats();
+  }
 
   // I2C
   #ifdef ARDUINO_ARCH_RP2040
@@ -150,14 +163,33 @@ void setup() {
     Serial.println("[Current] Not enabled");
   #endif
 
-  // Model
+  // Model initialization with persistence
   Serial.print("[Model] Initializing... ");
-  if (!kmeans_init(&model, FEATURE_DIM, 0.2f)) {
+  if (!kmeans_init(&model, FEATURE_DIM, LEARNING_RATE)) {
     Serial.println("FAILED!");
     while (1) delay(1000);
   }
   Serial.printf("OK (K=%d)\n", model.k);
 
+  // NEW: Try to load saved model
+  if (storage.hasModel()) {
+    Serial.println("[Model] Found saved model, loading...");
+    if (storage.load(&model)) {
+      Serial.printf("[Model] ✓ Restored K=%d clusters\n", model.k);
+      // List loaded clusters
+      for (uint8_t i = 0; i < model.k; i++) {
+        char label[MAX_LABEL_LENGTH];
+        kmeans_get_label(&model, i, label);
+        Serial.printf("  C%d: \"%s\" (%lu samples)\n", 
+                      i, label, model.clusters[i].count);
+      }
+    } else {
+      Serial.println("[Model] Load failed, using fresh model");
+    }
+  } else {
+    Serial.println("[Model] No saved model, starting fresh (K=1)");
+  }
+  
   // WiFi
   #ifdef HAS_WIFI
     Serial.printf("[WiFi] Connecting to %s", WIFI_SSID);
@@ -171,7 +203,7 @@ void setup() {
     if (WiFi.status() == WL_CONNECTED) {
       Serial.printf(" OK (%s)\n", WiFi.localIP().toString().c_str());
       
-      // *** FIX: Increase MQTT Buffer size for large JSON payloads ***
+      // Increase MQTT Buffer size for large JSON payloads
       mqtt.setBufferSize(1024);
 
       // Setup Topics
@@ -179,17 +211,25 @@ void setup() {
       snprintf(topic_label, sizeof(topic_label), "tinyol/%s/label", DEVICE_ID);
       snprintf(topic_discard, sizeof(topic_discard), "tinyol/%s/discard", DEVICE_ID);
       snprintf(topic_freeze, sizeof(topic_freeze), "tinyol/%s/freeze", DEVICE_ID);
+      snprintf(topic_reset, sizeof(topic_reset), "tinyol/%s/reset", DEVICE_ID);  // NEW
       
       Serial.println("[MQTT] Topics Configured:");
       Serial.printf("  DATA:    %s\n", topic_data);
       Serial.printf("  LABEL:   %s\n", topic_label);
       Serial.printf("  DISCARD: %s\n", topic_discard);
+      Serial.printf("  RESET:   %s\n", topic_reset);  // NEW
     } else {
       Serial.println(" FAILED");
     }
   #endif
 
   Serial.println("\n=== READY ===\n");
+  Serial.println("Commands via MQTT:");
+  Serial.println("  label:   {\"label\":\"fault_name\"}  - Create cluster");
+  Serial.println("  discard: {\"discard\":true}         - Discard alarm");
+  Serial.println("  freeze:  {\"freeze\":true}          - Manual freeze");
+  Serial.println("  reset:   {\"reset\":true}           - Reset model to K=1");
+  Serial.println("");
 }
 
 // =============================================================================
@@ -210,21 +250,29 @@ void mqttCallback(char* topic, byte* payload, unsigned int len) {
   serializeJson(doc, Serial);
   Serial.println();
 
+  // Handle LABEL command
   if (strstr(topic, "/label")) {
     const char* label = doc["label"];
     if (label) {
       Serial.printf("[MQTT] Label command: '%s'\n", label);
-      // Try to add cluster. Returns true if state was WAITING_LABEL
       if (kmeans_add_cluster(&model, label)) {
         Serial.printf("[MQTT] ✓ Created cluster K=%d\n", model.k);
+        
+        // Save immediately after creating cluster
+        storage.save(&model);
+        
         // Visual feedback
-        for(int i=0; i<3; i++) { digitalWrite(LED_BUILTIN, HIGH); delay(50); digitalWrite(LED_BUILTIN, LOW); delay(50); }
+        for(int i=0; i<3; i++) { 
+          digitalWrite(LED_BUILTIN, HIGH); delay(50); 
+          digitalWrite(LED_BUILTIN, LOW); delay(50); 
+        }
       } else {
         Serial.println("[MQTT] ✗ Label failed (not in WAITING_LABEL state?)");
       }
     }
   }
   
+  // Handle DISCARD command
   if (strstr(topic, "/discard")) {
     if (doc["discard"] == true) {
       Serial.println("[MQTT] Discard command");
@@ -233,11 +281,34 @@ void mqttCallback(char* topic, byte* payload, unsigned int len) {
     }
   }
   
+  // Handle FREEZE command
   if (strstr(topic, "/freeze")) {
     if (doc["freeze"] == true) {
       Serial.println("[MQTT] Freeze command");
       kmeans_request_label(&model);
       Serial.println("[MQTT] ✓ Frozen (Wait Label)");
+    }
+  }
+  
+  // NEW: Handle RESET command
+  if (strstr(topic, "/reset")) {
+    if (doc["reset"] == true) {
+      Serial.println("[MQTT] *** RESET COMMAND ***");
+      Serial.println("[MQTT] Clearing saved model and resetting to K=1...");
+      
+      // Clear storage
+      storage.clear();
+      
+      // Re-initialize model
+      kmeans_reset(&model);
+      
+      Serial.printf("[MQTT] ✓ Model reset to K=%d\n", model.k);
+      
+      // Long blink to indicate reset
+      for(int i=0; i<5; i++) { 
+        digitalWrite(LED_BUILTIN, HIGH); delay(200); 
+        digitalWrite(LED_BUILTIN, LOW); delay(200); 
+      }
     }
   }
 }
@@ -264,6 +335,7 @@ bool mqttConnect() {
     mqtt.subscribe(topic_label);
     mqtt.subscribe(topic_discard);
     mqtt.subscribe(topic_freeze);
+    mqtt.subscribe(topic_reset);  // NEW
     
     return true;
   }
@@ -278,7 +350,7 @@ void publishSummary() {
     return;
   }
 
-  // --- COMPUTE STATISTICS (from Original) ---
+  // --- COMPUTE STATISTICS ---
   float vib_rms_sum = 0, vib_rms_max = 0;
   float vib_peak_sum = 0, vib_peak_max = 0;
   float vib_crest_sum = 0, vib_crest_max = 0;
@@ -287,7 +359,6 @@ void publishSummary() {
   #endif
 
   int n = (window_idx > 0) ? window_idx : WINDOW_SIZE;
-  // If we haven't filled a full window yet (startup), use what we have
   int limit = (sampleCount < WINDOW_SIZE) ? sampleCount : n;
   if (limit == 0) limit = 1;
 
@@ -301,8 +372,6 @@ void publishSummary() {
     if (window_features[i][2] > vib_crest_max) vib_crest_max = window_features[i][2];
     
     #ifdef USE_CURRENT
-    // current rms is usually last feature or index 6 in 7D schema
-    // Adjust index based on schema, assuming last index for current RMS
     float i_val = window_features[i][FEATURE_DIM-1]; 
     i_rms_sum += i_val;
     if (i_val > i_rms_max) i_rms_max = i_val;
@@ -314,6 +383,12 @@ void publishSummary() {
   const char* stateStr = (state == STATE_NORMAL) ? "NORMAL" :
                          (state == STATE_ALARM) ? "ALARM" : "WAITING_LABEL";
   
+  // Get current cluster label
+  char currentLabel[MAX_LABEL_LENGTH] = "unknown";
+  if (!kmeans_is_alarm_active(&model) && model.k > 0) {
+    kmeans_get_label(&model, 0, currentLabel);  // Default to cluster 0
+  }
+  
   JsonDocument doc;
   doc["device_id"] = DEVICE_ID;
   doc["state"] = stateStr;
@@ -322,7 +397,9 @@ void publishSummary() {
   doc["motor_running"] = kmeans_is_motor_running(&model);
   
   doc["cluster"] = kmeans_is_alarm_active(&model) ? -1 : 0;
+  doc["label"] = currentLabel;
   doc["k"] = model.k;
+  doc["total_points"] = model.total_points;  // NEW: Include total training points
   
   // Statistical Features
   doc["vib_rms_avg"] = vib_rms_sum / limit;
@@ -341,16 +418,15 @@ void publishSummary() {
   doc["sample_count"] = limit;
   doc["timestamp"] = millis();
 
-  char buf[1024]; // Large buffer to match setBufferSize
+  char buf[1024];
   size_t len = serializeJson(doc, buf);
   
-  // *** PRINT PUBLISH TARGET FOR DEBUG ***
   Serial.printf("[MQTT] Publishing to %s (%d bytes)...\n", topic_data, len);
 
   if (mqtt.publish(topic_data, buf)) {
     Serial.println("[MQTT] ✓ Success");
   } else {
-    Serial.println("[MQTT] ✗ FAILED (Check max packet size?)");
+    Serial.println("[MQTT] ✗ FAILED");
   }
 }
 #endif
@@ -399,7 +475,7 @@ void loop() {
     currentSensor.read(&i1, &i2, &i3);
   #endif
 
-  // Extract features (Gravity Compensated via FeatureExtractor)
+  // Extract features (Gravity Compensated)
   float features[FEATURE_DIM];
   FeatureExtractor::extractSimple(ax, ay, az, i1, i2, i3, features);
   
@@ -407,7 +483,7 @@ void loop() {
   lastPeak = features[1];
   lastCrest = features[2];
 
-  // Store in window buffer for statistics (from Original logic)
+  // Store in window buffer for statistics
   for (int i = 0; i < FEATURE_DIM; i++) {
     window_features[window_idx][i] = features[i];
   }
@@ -428,8 +504,10 @@ void loop() {
     if (now - lastDebug >= DEBUG_MS) {
       lastDebug = now;
       Serial.println("⏸️  WAITING_LABEL - send label or discard via MQTT");
-      // Blink LED fast
-      for(int i=0;i<2;i++) { digitalWrite(LED_BUILTIN, HIGH); delay(50); digitalWrite(LED_BUILTIN, LOW); delay(50); }
+      for(int i=0;i<2;i++) { 
+        digitalWrite(LED_BUILTIN, HIGH); delay(50); 
+        digitalWrite(LED_BUILTIN, LOW); delay(50); 
+      }
     }
     return;
   }
@@ -458,9 +536,10 @@ void loop() {
                            (state == STATE_ALARM) ? "ALARM" : "WAIT";
     
     Serial.println("----------------------------------------");
-    Serial.printf("State: %s | K=%d | Motor: %s\n", 
+    Serial.printf("State: %s | K=%d | Motor: %s | Points: %lu\n", 
                   stateStr, model.k,
-                  kmeans_is_motor_running(&model) ? "ON" : "OFF");
+                  kmeans_is_motor_running(&model) ? "ON" : "OFF",
+                  model.total_points);
     Serial.printf("Features: RMS=%.3f Peak=%.3f Crest=%.2f\n", 
                   lastRms, lastPeak, lastCrest);
     #ifdef USE_CURRENT

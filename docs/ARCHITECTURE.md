@@ -1,4 +1,4 @@
-# Architecture v2
+# Architecture
 
 Label-driven clustering with proper alarm/freeze semantics.
 
@@ -205,6 +205,76 @@ sequenceDiagram
     D->>D: K++ (K=2)
     D->>S: state: NORMAL, k: 2
 ```
+
+
+## Persistent Storage
+
+Model survives power cycles via flash storage.
+
+```mermaid
+flowchart TB
+    subgraph Boot[Device Boot]
+        A[Power On] --> B{storage.hasModel?}
+        B -->|Yes| C[storage.load]
+        B -->|No| D[kmeans_init K=1]
+        C --> E[Resume K clusters]
+        D --> E
+    end
+
+    subgraph Runtime[Normal Operation]
+        E --> F[Sample loop]
+        F --> G{Outlier + Label?}
+        G -->|No| F
+        G -->|Yes| H[kmeans_add_cluster]
+        H --> I[storage.save]
+        I --> F
+    end
+
+    subgraph Reset[Reset Command]
+        J[MQTT: reset=true] --> K[storage.clear]
+        K --> L[kmeans_reset]
+        L --> F
+    end
+```
+
+### When Saves Happen
+
+| Event | Action |
+|-------|--------|
+| New cluster created | `storage.save()` immediately |
+| Power cycle | Load on boot |
+| Reset command | `storage.clear()` |
+| Firmware upload | Storage cleared (platform-dependent) |
+
+### Storage Size
+
+```
+Header:           16 bytes
+Per cluster:      ~80 bytes (centroid + metadata)
+Total (K=16):     ~1.3 KB flash
+
+ESP32 NVS:        4KB partition (plenty)
+RP2350 LittleFS:  2MB flash (plenty)
+```
+
+### Platform Abstraction
+
+```c
+// Same API, different backends
+class ModelStorage {
+    bool begin();
+    bool save(const kmeans_model_t* model);
+    bool load(kmeans_model_t* model);
+    bool hasModel();
+    void clear();
+};
+```
+
+| Platform | Backend | Notes |
+|----------|---------|-------|
+| ESP32 | NVS (Preferences) | Key-value store, wear-leveling built-in |
+| RP2350 | LittleFS | File-based, single binary file |
+
 
 ## Research Comparison Design
 
