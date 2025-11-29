@@ -32,7 +32,7 @@ Supervised by Dr Hudyjaya Siswoyo Jo
 
 <!--
 Breaking down the title:
-- **Tiny** = Runs on microcontrollers (<5KB RAM)
+- **Tiny** = Runs on microcontrollers (<3KB RAM)
 - **Online Learning** = Learns continuously from streaming data
 - **Human-in-the-Loop** = Operators label faults as discovered
 
@@ -75,28 +75,19 @@ pie title Why PdM Fails to Scale
 Sources: McKinsey 2021, MaintainX 2025, PwC 2018
 </div>
 
-<!--
-Despite 70-80% failure prevention potential, only 27% adopt PdM.
-
-Three barriers:
-1. ML expertise costs $90-195K/year, 142-day hiring cycles
-2. Commercial solutions: $50-200/device/year licensing
-3. Legacy systems need expensive protocol conversion
--->
-
 ---
 
 # State of the Art: TinyML for PdM
 
 <div class="text-sm">
 
-| Approach | Pre-Training | Memory | On-Device Learning | Platform |
-|----------|-------------|--------|-------------------|----------|
-| TinyOL (Ren 2021) | ✓ Autoencoder | ~100KB | Fine-tune last layer | Cortex-M4 |
-| MCUNetV3 (Lin 2022) | ✓ CNN | 256KB | Sparse backprop | Cortex-M7 |
-| TinyTL (Cai 2020) | ✓ Frozen weights | ~50KB | Bias-only updates | Cortex-M4 |
-| Cloud ML | ✓ Large datasets | N/A | Server-side | N/A |
-| **TinyOL-HITL** | **✗ None** | **2.5KB** | **Label-driven K++** | **Multi-arch** |
+| Approach | Pre-Training | Memory | HITL | Platform |
+|----------|-------------|--------|------|----------|
+| TinyOL (Ren 2021) | ✓ Autoencoder | ~100KB | ✗ | Cortex-M4 |
+| MCUNetV3 (Lin 2022) | ✓ CNN | 256KB | ✗ | Cortex-M7 |
+| TinyTL (Cai 2020) | ✓ Frozen weights | ~50KB | ✗ | Cortex-M4 |
+| Cloud ML | ✓ Large datasets | N/A | ✗ | Server-side |
+| **TinyOL-HITL** | **✗ None** | **2.5 - 3.0 KB** | **✓** | **Multi-arch** |
 
 </div>
 
@@ -107,16 +98,6 @@ All existing TinyML solutions require **pre-trained models**.
 Real industrial deployment: **fault types unknown until discovered**.
 
 </v-click>
-
-<!--
-TinyOL was groundbreaking - first online learning on MCUs.
-
-But it still needs offline-trained autoencoder. You train on "normal" samples from a powerful machine, then fine-tune on device.
-
-Problem: What if your machine's "normal" is different? What if new fault types emerge?
-
-TinyOL-HITL eliminates pre-training entirely.
--->
 
 ---
 
@@ -146,36 +127,29 @@ flowchart TB
 </div>
 </div>
 
-<!--
-Bearing MTBF: 10,000+ hours. You'd wait years for labeled fault data.
-
-Traditional approach: Collect → Label → Train → Deploy → Hope faults match training.
-
-Our approach: Deploy → Discover → Label → Learn → Adapt continuously.
--->
-
 ---
 
-# Research Design
+# Research Design & Comparison
 
 <div class="flex justify-center">
 <div class="w-160">
 
 ```mermaid
 flowchart LR
-    subgraph Phase1[Phase 1: Algorithm Validation]
+    subgraph Phase1[Phase 1: Feature Validation]
         A[CWRU Dataset] --> B[4 Fault Classes]
-        B --> C[Streaming K-means]
-        C --> D[Baseline Accuracy]
+        B --> C1[Vibration Only: 3D]
+        B --> C2[Vibration + Current: 7D]
+        B --> C3[FFT Features: 6D]
     end
 
     subgraph Phase2[Phase 2: Real-World UX]
         E[3-Phase Motor] --> F[Fault Simulation]
         F --> G[SCADA Dashboard]
-        G --> H[Operator Workflow]
+        G --> H[HITL Workflow]
     end
 
-    D --> E
+    C1 & C2 & C3 --> E
 ```
 
 </div>
@@ -184,19 +158,58 @@ flowchart LR
 <div class="grid grid-cols-2 gap-4 mt-4 text-sm">
 <div>
 
-**Phase 1: CWRU Benchmark**
-- 4 classes: Normal, Ball, Inner, Outer
-- Time-domain features
-- Compare vs literature
+**Research Question 1:**
+Does adding current sensing (multimodal) improve classification accuracy in low-memory environments?
 
 </div>
 <div>
 
-**Phase 2: Motor Test Rig**
-- 0.5 HP 3-phase motor
-- Eccentric weight faults
-- FUXA SCADA integration
+**Research Question 2:**
+Can an effective Human-in-the-Loop workflow be implemented on microcontrollers with <3KB RAM?
 
+</div>
+</div>
+
+---
+
+# Feature Schemas
+
+We evaluate four feature sets to balance accuracy vs. memory.
+
+<div class="text-xs">
+
+| Schema | Features | Dim | Memory |
+|--------|----------|-----|--------|
+| **TIME_ONLY** | rms, peak, crest | 3D | 1.6 KB |
+| **TIME_CURRENT** | + i₁, i₂, i₃, i_rms | 7D | 2.2 KB |
+| **FFT_ONLY** | + freq, amp, centroid | 6D | 2.0 KB |
+| **FFT_CURRENT** | All above | 10D | 3.0 KB |
+
+</div>
+
+<div class="grid grid-cols-2 gap-4 mt-4">
+<div>
+
+### Core Math (Time-Domain)
+```c
+// Always computed
+rms   = sqrt((ax² + ay² + az²) / 3)
+peak  = max(|ax|, |ay|, |az|)
+crest = peak / rms  // >2.5 = impulsive
+```
+
+</div>
+<div>
+
+### Feature Extraction Flow
+```mermaid
+flowchart LR
+    A[Sensors] --> B{Schema?}
+    B -->|Time| C[Statistical]
+    B -->|FFT| D[Spectral]
+    C & D --> E[Vector]
+    E --> F[K-Means]
+```
 </div>
 </div>
 
@@ -230,7 +243,7 @@ flowchart LR
 | Speed var | VFD: 25, 40, 50, 60 Hz |
 
 **Why eccentric weight:**
-- Non-destructive (repeatable)
+- Non-destructive & repeatable
 - Clear vibration signature
 - Industry-standard test
 
@@ -239,7 +252,9 @@ flowchart LR
 
 ---
 
-# Algorithm: Label-Driven Clustering
+# Algorithm: The State Machine
+
+**Key Innovation:** Alarm ≠ Freeze. The system distinguishes between transient alarms and label-ready states.
 
 <div class="flex justify-center">
 <div class="w-140">
@@ -248,29 +263,25 @@ flowchart LR
 stateDiagram-v2
     [*] --> NORMAL: Initialize K=1
 
-    NORMAL --> FROZEN: Outlier detected
-    note right of FROZEN: Buffer frozen\nWait for operator
+    NORMAL --> ALARM: Outlier detected
+    note right of ALARM: Motor running<br/>Red banner on SCADA
 
-    FROZEN --> NORMAL: Operator labels → K++
-    FROZEN --> NORMAL: Operator discards (false alarm)
+    ALARM --> NORMAL: 3s normal (auto-clear)
 
-    FROZEN --> FROZEN_IDLE: Motor stops
-    FROZEN_IDLE --> FROZEN: Motor restarts
-    FROZEN_IDLE --> NORMAL: Label during downtime
+    ALARM --> WAITING_LABEL: Motor stops
+    ALARM --> WAITING_LABEL: Operator hits Freeze
+    note right of WAITING_LABEL: Buffer Frozen<br/>Ready for input
+
+    WAITING_LABEL --> NORMAL: Label "Fault" → K++
+    WAITING_LABEL --> NORMAL: Discard (False Alarm)
 ```
 
 </div>
 </div>
 
-<div class="text-sm mt-4">
-
-**Key insight:** Alarm persists until operator responds. No timeout. Survives shift changes.
-
-</div>
-
 ---
 
-# TinyML Optimizations Applied
+# TinyML Optimizations
 
 <div class="grid grid-cols-2 gap-8">
 <div>
@@ -278,7 +289,7 @@ stateDiagram-v2
 ### Memory Layout
 
 ```c
-// Total: ~2.5 KB
+// Total: ~2.5 - 3.0 KB
 typedef struct {
   cluster_t clusters[16];  // 1.0 KB
   ring_buffer_t buffer;    // 1.2 KB
@@ -311,14 +322,6 @@ typedef struct {
 </div>
 </div>
 
-<!--
-TinyOL uses autoencoder: input → encoder → latent → decoder → output.
-That's ~100KB+ for network weights.
-
-We use streaming k-means: just K centroids × D dimensions × 4 bytes.
-With K=16, D=7 features: only 448 bytes for centroids.
--->
-
 ---
 
 # Memory Comparison
@@ -330,125 +333,59 @@ xychart-beta
     title "RAM Usage Comparison (KB)"
     x-axis ["TinyOL", "TinyTL", "MCUNetV3", "TinyOL-HITL"]
     y-axis "RAM (KB)" 0 --> 300
-    bar [100, 50, 256, 2.5]
+    bar [100, 50, 256, 3]
 ```
 
 </div>
 
 <div class="text-center mt-4">
 
-**TinyOL-HITL: 2.5 KB** — Runs on virtually any MCU
+**TinyOL-HITL: ~3 KB** — Runs on virtually any MCU (33× smaller than TinyOL)
 
 </div>
 
 ---
 
-# Feature Extraction Pipeline
-
-<div class="flex justify-center">
-<div class="w-160">
-
-```mermaid
-flowchart LR
-    subgraph Sensors
-        A[MPU6050/ADXL345<br/>3-axis accel] --> B[Vibration]
-        C[ZMCT103C × 3<br/>Phase currents] --> D[Current]
-    end
-
-    subgraph Features["7D Feature Vector"]
-        B --> E[RMS]
-        B --> F[Peak]
-        B --> G[Crest Factor]
-        D --> H[I₁, I₂, I₃]
-        D --> I[I_RMS]
-    end
-
-    subgraph Model
-        E & F & G & H & I --> J[Streaming K-means]
-        J --> K{Outlier?}
-        K -->|No| L[Update Centroid]
-        K -->|Yes| M[FREEZE → Alarm]
-    end
-```
-
-</div>
-</div>
-
----
-
-# CWRU Benchmark Results
+# Results: Accuracy & Performance
 
 <div class="grid grid-cols-2 gap-8">
 <div>
 
-### Literature Comparison
+### CWRU Benchmark (Accuracy)
 
-| Method | Accuracy | Memory |
-|--------|----------|--------|
-| CNN (supervised) | 97-99% | ~500KB |
-| Lite CNN | 99.86% | 153K params |
-| K-means (batch) | ~80% | O(nK) |
-| **Ours (K=1)** | **[DATA]%** | **2.5KB** |
-| **Ours (K=4)** | **[DATA]%** | **2.5KB** |
-| **+HITL** | **[DATA]%** | **2.5KB** |
+| Schema | Baseline | +HITL |
+|--------|----------|-------|
+| TIME_ONLY (3D) | [DATA]% | [DATA]% |
+| TIME_CURRENT (7D) | [DATA]% | [DATA]% |
+| FFT_ONLY (6D) | [DATA]% | [DATA]% |
+| FFT_CURRENT (10D)| [DATA]% | [DATA]% |
 
-</div>
-<div>
-
-### Confusion Matrix
-
+**Confusion Matrix (Sample)**
 ```
               Predicted
            N    B    I    O
 Actual N [   ][   ][   ][   ]
        B [   ][   ][   ][   ]
-       I [   ][   ][   ][   ]
-       O [   ][   ][   ][   ]
 ```
 
-**[DATA]** = Fill from experiments
+</div>
+<div>
+
+### Hardware Performance
+
+**Detection Latency:**
+- Alarm trigger: **[DATA] samples**
+- Time to detection: **[DATA] seconds**
+
+**Cross-Platform Consistency:**
+- Target: Centroid delta < 0.1
+- ESP32 vs RP2350: **[DATA]**
 
 </div>
 </div>
 
 <div class="text-sm mt-4 opacity-75">
-
 Note: We avoid common data leakage (Rosa 2024) by using proper train/test splits.
-
-</div>
-
----
-
-# Hardware Test Results
-
-<div class="grid grid-cols-2 gap-8">
-<div>
-
-### Baseline → Fault Detection
-
-| Condition | RMS (m/s²) | Cluster |
-|-----------|------------|---------|
-| Normal (50Hz) | [DATA] | C0 |
-| Unbalance 100g·mm | [DATA] | C1 |
-| Unbalance 200g·mm | [DATA] | C2 |
-
-### Detection Latency
-- Alarm trigger: **[DATA] samples**
-- Time to detection: **[DATA] seconds**
-
-</div>
-<div>
-
-### Cross-Platform Consistency
-
-| MCU | Centroid Delta |
-|-----|----------------|
-| ESP32 (baseline) | 0 |
-| RP2350 | [DATA] |
-
-**Target:** Delta < 0.1 (fixed-point consistent)
-
-</div>
 </div>
 
 ---
@@ -466,22 +403,24 @@ sequenceDiagram
     participant O as Operator
 
     M->>D: Normal vibration
-    D->>S: cluster: 0, label: "normal"
+    D->>S: state: NORMAL ✅
 
-    Note over M: Add eccentric weight
+    Note over M: Fault develops
+    M->>D: High vibration
+    D->>S: state: ALARM 🔴
 
-    M->>D: Increased vibration
-    D->>D: Outlier detected!
-    D->>S: alarm_active: true
-    S->>O: 🔴 Red banner
+    alt Motor stops
+        M->>D: RMS → 0
+        D->>S: state: WAITING_LABEL
+    else Operator clicks Freeze
+        O->>S: Freeze button
+        S->>D: freeze command
+        D->>S: state: WAITING_LABEL
+    end
 
-    O->>O: Walk to motor, inspect
     O->>S: Label: "unbalance"
-    S->>D: tinyol/device/label
-
     D->>D: K++ (K=2)
-    D->>S: cluster: 1, label: "unbalance"
-    S->>O: ✅ Resume monitoring
+    D->>S: state: NORMAL, k: 2 ✅
 ```
 
 </div>
@@ -489,155 +428,75 @@ sequenceDiagram
 
 ---
 
-# API: 8 Functions Total
-
-```c
-// 1. Initialize with K=1 ("normal" baseline)
-kmeans_init(&model, feature_dim, learning_rate);
-
-// 2. Stream samples - returns cluster ID or -1 if outlier
-int8_t cluster = kmeans_update(&model, features);
-
-// 3. Handle alarms
-if (cluster == -1 && kmeans_get_state(&model) == STATE_FROZEN) {
-    // Operator labels via MQTT
-    kmeans_add_cluster(&model, "bearing_fault");  // K++
-}
-
-// 4. Predict without updating
-uint8_t predicted = kmeans_predict(&model, features);
-
-// 5. Correct misclassifications
-kmeans_correct(&model, point, old_cluster, new_cluster);
-```
-
-<div class="text-sm mt-4">
-
-Full API: `kmeans_init`, `kmeans_update`, `kmeans_predict`, `kmeans_add_cluster`, `kmeans_discard`, `kmeans_correct`, `kmeans_get_state`, `kmeans_reset`
-
-</div>
-
----
-
-# SCADA Integration (MQTT)
+# Integration: API & MQTT
 
 <div class="grid grid-cols-2 gap-4">
 <div>
 
-### Device → SCADA (every 10s)
+### Device API (8 Functions)
 
-```json
-{
-  "device_id": "motor_01",
-  "cluster": 0,
-  "label": "normal",
-  "k": 1,
-  "alarm_active": false,
-  "rms_avg": 5.2,
-  "peak_avg": 9.1,
-  "crest_avg": 1.75
+```c
+// 1. Init K=1
+kmeans_init(&model, FEATURE_DIM, 0.2f);
+
+// 2. Stream & Update
+int8_t c = kmeans_update(&model, feats);
+
+// 3. Handle Alarm Logic
+if (c == -1 && kmeans_is_waiting(&model)) {
+    // Operator labeled via MQTT
+    kmeans_add_cluster(&model, "fault");
 }
+
+// 4. Manual Freeze
+kmeans_request_label(&model);
 ```
 
 </div>
 <div>
 
-### Operator → Device
+### SCADA JSON Payload
 
 ```json
-// Create new cluster
-{"label": "bearing_outer_race"}
-
-// Discard false alarm
-{"discard": true}
+{
+  "device_id": "motor_01",
+  "state": "ALARM",
+  "cluster": -1,
+  "k": 1,
+  "rms_avg": 5.2,
+  "peak_avg": 9.1
+}
 ```
 
-**Topics:**
-- `sensor/{id}/data` — summaries
-- `tinyol/{id}/label` — create cluster
-- `tinyol/{id}/discard` — clear alarm
+**Topics:** `data`, `label`, `discard`, `freeze`
 
 </div>
 </div>
 
 ---
 
-# Key Contribution vs TinyOL
+# Key Contributions
 
 <div class="flex justify-center">
 
 | Aspect | TinyOL (Ren 2021) | TinyOL-HITL (Ours) |
 |--------|-------------------|---------------------|
-| Pre-training | ✓ Required (autoencoder) | ✗ None |
-| Initial classes | Fixed at deployment | K=1, grows dynamically |
-| Memory | ~100KB SRAM | 2.5KB total |
-| Architecture | ARM Cortex-M4 only | ESP32 + RP2350 |
-| HITL integration | None | Core feature |
+| Pre-training | ✓ Required | ✗ None |
+| Initial classes | Fixed | K=1, grows dynamically |
+| Memory | ~100KB SRAM | 3 KB total |
+| Alarm Logic | N/A | State Machine (Alarm ≠ Freeze) |
+| HITL | None | Core feature |
 | Protocol | Proprietary | Standard MQTT |
 
 </div>
 
 <v-click>
 
-### What We Learned From TinyOL
-- Online learning on MCUs is feasible
-- Streaming data one-by-one works
-- EMA updates are stable
-
-### What We Added
-- **Unsupervised start** (no pre-training)
-- **Operator-driven class discovery**
-- **Freeze-on-alarm workflow**
+### Development Roadmap
+- **Current:** Research Prototype & Algorithm Validation
+- **Future:** Cluster merging, Auto-threshold tuning, Energy harvesting support
 
 </v-click>
-
----
-
-# Future Enhancements
-
-<div class="grid grid-cols-3 gap-4 text-sm">
-<div>
-
-### Algorithm
-- Cluster merging
-- Confidence scoring
-- Auto-threshold tuning
-- Multi-resolution features
-
-</div>
-<div>
-
-### Hardware
-- Energy harvesting
-- Compact PCB design
-- IP65 enclosure
-- Battery monitoring
-
-</div>
-<div>
-
-### Integration
-- OPC-UA native
-- Edge-to-cloud sync
-- Fleet management
-- Historical trending
-
-</div>
-</div>
-
-<div class="flex justify-center mt-8">
-<div class="w-120">
-
-```mermaid
-timeline
-    title Development Roadmap
-    Current : Research Prototype
-    Q1 2026 : Production Ready
-    Q2 2026 : Commercial Product
-```
-
-</div>
-</div>
 
 ---
 layout: center
@@ -654,19 +513,11 @@ class: text-center
 
 **Deploy Day 1. Learn as you go.**
 
+**Core Innovation:** A 3KB label-driven clustering engine with a robust state machine that puts the operator in control.
+
 TinyOL-HITL proves: Unsupervised + Human-in-the-Loop = Industrial-Ready PdM
 
 </v-clicks>
-
-<div class="pt-8" v-click>
-
-**Core contribution:**
-Label-driven incremental clustering that starts from K=1
-and grows through operator feedback.
-
-**Memory:** 2.5 KB | **Platforms:** ESP32 + RP2350
-
-</div>
 
 ---
 layout: end
@@ -689,10 +540,4 @@ layout: end
 - Supervisor: Dr Hudyjaya Siswoyo Jo
 
 </div>
-</div>
-
-<div class="text-center mt-8 text-sm opacity-75">
-
-Thank you for your attention.
-
 </div>

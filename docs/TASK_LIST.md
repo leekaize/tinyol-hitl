@@ -1,291 +1,193 @@
-# 2-Day Final Sprint
+# 2-Day Final Sprint (Updated)
 
-- **Deadline:** Presentation ready
-- **Philosophy:** Ship working demo. Document honest results. Skip perfection.
-
-## Critical Path (What Actually Matters)
+## Critical Path
 
 ```mermaid
 flowchart LR
-    A[Integrate Current Sensor] --> B[Run Motor Tests]
-    B --> C[Record Demo Video]
-    C --> D[Update Slides with Real Data]
-    D --> E[Polish Paper]
+    A[FFT Research] --> B[Update Features]
+    B --> C[Motor Tests]
+    C --> D[Record Demo]
+    D --> E[Update Results]
+    E --> F[Polish Paper/Slides]
 ```
-
-## Day 1: Hardware Validation + Data Collection (12 hours)
-
-### Hour 0-2: Current Sensor Integration
-**Goal:** Merge ZMCT103C code into main sketch
-
-- [x] Add current sensing to `core.ino`
-- [x] Update `feature_extractor.h` for 7D features `[rms, peak, crest, i1, i2, i3, i_total]`
-- [x] Test current readings with motor running
-- [x] Verify readings change with load
-- [ ] Update vibration features to more pragmatic set
-- [ ] Proper freezing when motor stopped or button pressed
-
-**Done when:** Serial Monitor shows current values updating when motor load changes
-
-### Hour 2-4: Motor Test - Baseline Collection
-**Goal:** Establish normal cluster baseline
-
-- [ ] Run motor at 15Hz for 5 minutes
-- [ ] Collect 3000 samples (10Hz × 300s)
-- [ ] Save Serial output to CSV
-- [ ] Verify cluster variance is stable
-
-**Test protocol:**
-```
-1. Power on motor (VFD at 15Hz)
-2. Wait 10s for warm-up
-3. Start Serial logging
-4. Record 5 minutes
-5. Stop motor, save log
-```
-
-**Done when:** CSV file with 3000+ rows, single cluster C0
-
-### Hour 4-6: Fault Injection - Unbalance Test
-**Goal:** Trigger alarm, label fault, create K=2
-
-- [ ] Install 100 g·mm eccentric weight
-- [ ] Run motor at 50Hz
-- [ ] Wait for alarm trigger
-- [ ] Label as "unbalance" via MQTT or Serial
-- [ ] Verify K=2 and correct classification
-
-**Expected results:**
-- RMS increase: 2-5× baseline
-- Crest factor spike: >2.5
-- Alarm within 10 seconds
-
-**Done when:** Screenshot showing K=2, "unbalance" cluster active
-
-### Hour 6-8: Multi-Condition Test
-**Goal:** Demonstrate adaptability
-
-- [ ] Speed variation test (25Hz, 40Hz, 60Hz)
-- [ ] Capture how baseline adapts
-- [ ] Log confusion matrix if possible
-
-**Optional (if time):**
-- [ ] Phase loss simulation (disconnect one phase briefly)
-- [ ] Label as "phase_loss" (K=3)
-
-**Done when:** Evidence of multiple conditions handled
-
-### Hour 8-10: Record Demo Video
-**Goal:** 2-minute video showing complete workflow
-
-**Script:**
-```
-0:00 - Show hardware setup (motor, MCU, sensors)
-0:20 - Show FUXA dashboard (normal state)
-0:40 - Add eccentric weight to pulley
-1:00 - Watch alarm trigger (red banner)
-1:20 - Label fault: "unbalance"
-1:40 - Show K=2 in dashboard
-2:00 - Show correct prediction on next unbalance
-```
-
-**Done when:** `demo.mp4` under 2 minutes, shows complete HITL cycle
-
-### Hour 10-12: Data Analysis + Documentation
-**Goal:** Create actual benchmark numbers
-
-- [ ] Calculate accuracy from test runs
-- [ ] Create confusion matrix
-- [ ] Document memory usage (use `sizeof()` in code)
-- [ ] Measure loop latency (use `micros()`)
-
-**Metrics to capture:**
-```
-| Metric              | Value     |
-|---------------------|-----------|
-| Model memory (RAM)  | XXX bytes |
-| Loop latency        | XXX ms    |
-| Baseline accuracy   | XX%       |
-| +HITL accuracy      | XX%       |
-| Samples to alarm    | XX        |
-```
-
-**Done when:** Numbers filled in, screenshots captured
 
 ---
 
-## Day 2: Slides + Paper + Polish (12 hours)
+## Completed
 
-### Hour 0-3: Update Slides with Real Data
-**Goal:** Replace all [TODO] placeholders
+- [x] Current sensor integration (`core.ino`)
+- [x] 7D feature extraction (`feature_extractor.h`)
+- [x] State machine redesign (NORMAL → ALARM → WAITING_LABEL)
+- [x] MQTT schema update (alarm_active, waiting_label, motor_running)
+- [x] Architecture documentation
+- [x] Slides update with new state machine
+- [x] Feature schema comparison design (3D vs 7D vs 6D vs 10D)
 
-- [ ] Update benchmark comparison table
-- [ ] Add actual accuracy numbers
-- [ ] Add memory footprint comparison
-- [ ] Embed demo video or screenshot sequence
+---
 
-**Key slides to update:**
-1. Model Performance (add real CWRU comparison)
-2. Test Results (add confusion matrix)
-3. Implementation (add memory breakdown)
+## Day 1 Remaining
 
-### Hour 3-5: Literature Comparison Section
-**Goal:** Position clearly against TinyOL
+### Hour 0-2: FFT Feature Research
 
-**Key points to emphasize:**
+**Action:** Research minimal FFT features.
 
-| Aspect | TinyOL (Ren 2021) | TinyOL-HITL (Ours) |
-|--------|-------------------|---------------------|
-| Pre-training | Required (offline) | None |
-| Memory | ~100KB autoencoder | 2.5KB total |
-| Classes | Fixed at deployment | Dynamic (K grows) |
-| Platform | ARM Cortex-M4 only | ARM + Xtensa |
-| HITL | None | Core feature |
+**Done when:**
+- [ ] FFT feature list with citations
+- [x] Update `feature_extractor.h` with actual implementation
+- [x] Test FFT on ESP32
 
-- [ ] Add TinyOL citation with comparison
-- [ ] Add CWRU benchmark citations
-- [ ] Explain data leakage awareness (Rosa 2024)
+### Hour 2-4: Motor Baseline Test
 
-### Hour 5-7: Paper Updates
-**Goal:** Fill placeholders in paper.tex
+**Protocol:**
+1. Power on VFD at 50 Hz
+2. Wait 30s warm-up
+3. Start Serial logging
+4. Record 5 min (3000 samples @ 10Hz)
+5. Verify single cluster (K=1)
 
-- [ ] Update abstract with actual results
-- [ ] Fill Table 1 (capability comparison)
-- [ ] Update Section V (Experimental Validation)
-- [ ] Add confusion matrix figure
+**Done when:**
+- [ ] CSV with 3000+ samples
+- [ ] Screenshot: K=1, stable variance
 
-**Sections needing numbers:**
-- Section IV.A: Memory footprint
-- Section V.A: CWRU accuracy
+### Hour 4-6: Fault Injection Test
+
+**Protocol:**
+1. Install 100 g·mm eccentric weight
+2. Resume motor at 50 Hz
+3. Watch for ALARM state
+4. Let motor run → observe ALARM (sampling continues)
+5. Stop motor → observe WAITING_LABEL (frozen)
+6. Send label via MQTT
+7. Verify K=2
+
+**Done when:**
+- [ ] Screenshot: ALARM state
+- [ ] Screenshot: WAITING_LABEL state
+- [ ] Screenshot: K=2 after labeling
+
+### Hour 6-8: Record Demo Video
+
+**Script (2 min):**
+```
+0:00 - Hardware: motor, MCU, sensors
+0:20 - FUXA: NORMAL state
+0:40 - Add weight → ALARM (red banner, still sampling)
+1:00 - Motor stops → WAITING_LABEL (frozen)
+1:20 - Label: "unbalance"
+1:40 - K=2, resume NORMAL
+2:00 - Next unbalance → auto-classify to C1
+```
+
+**Done when:**
+- [ ] `demo.mp4` under 2 min
+
+### Hour 8-10: Schema Comparison (CWRU)
+
+**Test each schema:**
+1. TIME_ONLY (3D): rms, peak, crest
+2. TIME_CURRENT (7D): + i1, i2, i3, i_rms
+3. FFT_ONLY (6D): + fft_freq, fft_amp, centroid
+
+**Done when:**
+- [ ] Accuracy for each schema
+- [ ] Confusion matrix for best schema
+
+### Hour 10-12: Fill Results Placeholders
+
+Files to update:
+- [ ] `slidev/slides.md` - [TODO] → actual numbers
+- [ ] `docs/BENCHMARKS.md` - fill tables
+- [ ] Screenshot gallery for paper
+
+---
+
+## Day 2
+
+### Hour 0-3: Update Paper
+
+Sections needing data:
+- Abstract: [PLACEHOLDER] → actual results
+- Section V.A: CWRU accuracy per schema
 - Section V.B: Hardware test results
 - Section VI: Discussion
 
-### Hour 7-9: Cross-Platform Verification
-**Goal:** Prove both MCUs work
+### Hour 3-5: Cross-Platform Test
 
-- [ ] Flash same code to RP2350
-- [ ] Run identical test
-- [ ] Capture delta between ESP32 and RP2350 centroids
+- [ ] Flash RP2350 with same firmware
+- [ ] Run identical 100-sample test
+- [ ] Compare centroid delta vs ESP32
 - [ ] Document any differences
 
-**Done when:** Screenshot showing both MCUs with similar outputs
+### Hour 5-7: Final Slide Polish
 
-### Hour 9-10: Slide Practice + Polish
-**Goal:** Smooth 10-minute presentation
-
-- [ ] Time each section
-- [ ] Identify cuts if over time
+- [ ] Time each section (target: 10 min total)
 - [ ] Add speaker notes
 - [ ] Export PDF backup
 
-**Target timing:**
-```
-Intro + Problem:      2 min
-State of Art:         1 min
-Why Unsupervised:     1 min
-Research Setup:       1 min
-Test Rig + Model:     2 min
-Results + Demo:       2 min
-Conclusion:           1 min
-------------------------
-Total:               10 min
-```
+### Hour 7-10: Paper Finalization
 
-### Hour 10-12: Final Review + Commit
-**Goal:** Everything committed and deployed
+- [ ] Run `make` in docs/paper
+- [ ] Fix any LaTeX errors
+- [ ] Add figures from screenshots
 
-- [ ] Run `make test` (unit tests pass)
-- [ ] Verify slides deploy to GitHub Pages
-- [ ] Tag release: `git tag v1.0-presentation`
+### Hour 10-12: Final Review
+
+- [ ] `make test` passes
+- [ ] Slides deploy to GitHub Pages
+- [ ] Tag release: `v1.0-presentation`
 - [ ] Push everything
-- [ ] Generate PDF exports as backup
-
-**Done when:** Tag exists, slides live at GitHub Pages URL
 
 ---
 
-## What to Skip (Time Constraints)
+## Research Comparison Summary
 
-| Task | Why Skip |
-|------|----------|
-| OPC-UA integration | MQTT sufficient for demo |
-| Full CWRU streaming | Motor test more compelling |
-| Multiple fault types | Unbalance alone proves concept |
-| Paper polish | Slides are deliverable |
-| Battery/power tests | Out of scope |
+| Experiment | Schema | Features |
+|------------|--------|----------|
+| Exp 1 | TIME_ONLY | rms, peak, crest |
+| Exp 2 | TIME_CURRENT | + 3-phase current |
+| Exp 3 | FFT_ONLY | + FFT features |
+| Exp 4 | FFT_CURRENT | All combined |
+
+**Hypothesis:**
+- FFT adds 5-10% accuracy (frequency signatures)
+- Current adds 5-10% accuracy (load correlation)
+- Combined adds 10-15% over baseline
+
+---
+
+## Files Updated This Session
+
+| File | Status |
+|------|--------|
+| `core/streaming_kmeans.h` | ✓ New state machine |
+| `core/streaming_kmeans.c` | ✓ New implementation |
+| `core/feature_extractor.h` | ✓ Schema selection |
+| `docs/ARCHITECTURE.md` | ✓ Updated diagrams |
+| `docs/mqtt_schema.md` | ✓ New fields |
+| `slidev/slides.md` | ✓ Updated |
+| `docs/TASK_LIST.md` | ✓ This file |
+
+## Files Still Need Update
+
+| File | What's Needed |
+|------|---------------|
+| `core/core.ino` | Use new API |
+| `core/tests/test_kmeans.c` | Update for new states |
+| `docs/paper/paper.tex` | Add results |
+| `docs/BENCHMARKS.md` | Fill numbers |
 
 ---
 
 ## Emergency Fallbacks
 
-### If motor test fails:
-1. Use sensor tap/shake as "fault simulation"
-2. Label as "manual_perturbation"
-3. Still demonstrates HITL workflow
+**If FFT too complex:**
+- Use time-domain only (proven works)
+- Note "FFT as future work"
 
-### If FUXA integration broken:
-1. Use Serial Monitor + mosquitto_sub
-2. Screenshot terminal output
-3. Explain "production would use SCADA"
+**If current sensors noisy:**
+- Compare vibration-only results
+- Still valid contribution
 
-### If current sensors noisy:
-1. Use vibration-only (3D features)
-2. Note "current integration as future work"
-3. Still valid research contribution
-
-### If cross-platform fails:
-1. Use ESP32 only
-2. Note "RP2350 tested separately"
-3. Commit ESP32 results
-
----
-
-## Honest Reporting Guidelines
-
-For any incomplete item, use this format in slides/paper:
-
-```markdown
-**Result:** [Actual measured value or "Not tested"]
-**Expected:** [What literature suggests]
-**Limitation:** [Why not achieved]
-```
-
-Example:
-```markdown
-**Accuracy:** 78% (baseline), 85% (+HITL)
-**Expected:** 80-90% based on k-means literature
-**Limitation:** Limited fault conditions tested
-```
-
----
-
-## Files to Modify Today
-
-### Priority 1 (Must change):
-- `core/core.ino` - Add current sensing
-- `core/feature_extractor.h` - Add 7D features
-- `slidev/slides.md` - Replace [TODO] with data
-- `docs/BENCHMARKS.md` - Fill actual numbers
-
-### Priority 2 (Should change):
-- `docs/paper/paper.tex` - Update results section
-- `README.md` - Update with final status
-
-### Priority 3 (Nice to have):
-- `integrations/README.md` - Verify FUXA steps work
-- `docs/ARCHITECTURE.md` - Add current sensing diagram
-
----
-
-## Success Criteria
-
-Presentation ready when:
-
-1. ✅ Demo video shows alarm → label → predict cycle
-2. ✅ Slides have actual accuracy numbers (not [TODO])
-3. ✅ TinyOL comparison table complete
-4. ✅ Memory footprint documented
-5. ✅ At least one cross-platform screenshot
-
-**Core message:**
-> "TinyOL-HITL starts unsupervised with K=1, operators label faults as discovered, system learns without pre-training. 2.5KB memory, runs on ESP32 and RP2350."
+**If motor test fails:**
+- Use tap/shake as "fault"
+- Demonstrates HITL workflow

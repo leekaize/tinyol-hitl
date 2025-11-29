@@ -1,6 +1,13 @@
 /**
  * @file streaming_kmeans.h
- * @brief Simplified label-driven clustering
+ * @brief Label-driven clustering with proper alarm/freeze semantics
+ * 
+ * State machine:
+ *   NORMAL → [outlier] → ALARM (alert active, still sampling)
+ *   ALARM → [motor stops OR button] → WAITING_LABEL (frozen)
+ *   ALARM → [returns to normal] → NORMAL (auto-clear)
+ *   WAITING_LABEL → [label] → NORMAL (K++)
+ *   WAITING_LABEL → [discard] → NORMAL
  */
 
 #ifndef STREAMING_KMEANS_H
@@ -21,16 +28,23 @@ typedef int32_t fixed_t;
 #define FIXED_TO_FLOAT(x) ((float)(x) / (1 << FIXED_POINT_SHIFT))
 #define FIXED_MUL(a, b) (((int64_t)(a) * (b)) >> FIXED_POINT_SHIFT)
 
+/**
+ * System states:
+ * - NORMAL: No alarm, sampling active
+ * - ALARM: Outlier detected, motor running, still sampling (alert banner)
+ * - WAITING_LABEL: Frozen, motor stopped OR button pressed, ready for label
+ */
 typedef enum {
-    STATE_NORMAL,
-    STATE_ALARM,
-    STATE_FROZEN,
-    STATE_FROZEN_IDLE
+    STATE_NORMAL,        // Green - all good
+    STATE_ALARM,         // Red banner - outlier detected, motor running
+    STATE_WAITING_LABEL  // Red + frozen - ready for operator input
 } system_state_t;
 
-#define IDLE_RMS_THRESHOLD FLOAT_TO_FIXED(0.5f)
-#define IDLE_CURRENT_THRESHOLD FLOAT_TO_FIXED(0.1f)
-#define IDLE_CONSECUTIVE_SAMPLES 10
+// Thresholds for motor-stopped detection
+#define IDLE_RMS_THRESHOLD FLOAT_TO_FIXED(0.5f)      // m/s²
+#define IDLE_CURRENT_THRESHOLD FLOAT_TO_FIXED(0.1f)  // Amps
+#define IDLE_CONSECUTIVE_SAMPLES 10                   // 1 second @ 10Hz
+#define ALARM_CLEAR_SAMPLES 30                        // 3 seconds of normal = auto-clear
 
 typedef struct {
     fixed_t samples[RING_BUFFER_SIZE][MAX_FEATURES];
@@ -55,37 +69,59 @@ typedef struct {
     uint32_t total_points;
     bool initialized;
     
+    // State machine
     system_state_t state;
     ring_buffer_t buffer;
     fixed_t outlier_threshold;
     fixed_t last_distance;
     
-    uint8_t idle_count;
+    // Alarm tracking
+    bool alarm_active;           // Red banner visible
+    bool waiting_label;          // Frozen, ready for input
+    uint16_t alarm_sample_count; // Samples since alarm triggered
+    uint16_t normal_streak;      // Consecutive normal samples (for auto-clear)
+    
+    // Motor status detection
+    uint8_t idle_count;          // Consecutive idle samples
     fixed_t last_rms;
     fixed_t last_current;
+    bool motor_running;
 } kmeans_model_t;
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
+// Core API
 bool kmeans_init(kmeans_model_t* model, uint8_t feature_dim, float learning_rate);
 int8_t kmeans_update(kmeans_model_t* model, const fixed_t* point);
 uint8_t kmeans_predict(const kmeans_model_t* model, const fixed_t* point);
+
+// Alarm handling
 bool kmeans_add_cluster(kmeans_model_t* model, const char* label);
-bool kmeans_is_outlier(const kmeans_model_t* model, const fixed_t* point);
-void kmeans_alarm(kmeans_model_t* model);
 void kmeans_discard(kmeans_model_t* model);
+void kmeans_request_label(kmeans_model_t* model);  // Manual button press
+
+// Status queries
 system_state_t kmeans_get_state(const kmeans_model_t* model);
+bool kmeans_is_alarm_active(const kmeans_model_t* model);
+bool kmeans_is_waiting_label(const kmeans_model_t* model);
+bool kmeans_is_motor_running(const kmeans_model_t* model);
 uint16_t kmeans_get_buffer_size(const kmeans_model_t* model);
+
+// Motor status update (call every sample)
+void kmeans_update_motor_status(kmeans_model_t* model, fixed_t rms, fixed_t current);
+
+// Utilities
 bool kmeans_get_centroid(const kmeans_model_t* model, uint8_t cluster_id, fixed_t* centroid);
 bool kmeans_get_label(const kmeans_model_t* model, uint8_t cluster_id, char* label);
 fixed_t kmeans_inertia(const kmeans_model_t* model);
 void kmeans_reset(kmeans_model_t* model);
 bool kmeans_correct(kmeans_model_t* model, const fixed_t* point, uint8_t old_cluster, uint8_t new_cluster);
 void kmeans_set_threshold(kmeans_model_t* model, float multiplier);
-void kmeans_update_idle(kmeans_model_t* model, fixed_t rms, fixed_t current);
-bool kmeans_is_idle(const kmeans_model_t* model);
+
+// Legacy compatibility
+bool kmeans_is_outlier(const kmeans_model_t* model, const fixed_t* point);
 
 #ifdef __cplusplus
 }
