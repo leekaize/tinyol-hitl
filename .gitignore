@@ -45,10 +45,10 @@ arduino-ide_*.AppImage
 *.toc
 *.lof
 *.lot
-docs/paper/IEEEtran.cls
 
 # Generated paper
 docs/paper/paper.pdf
+paper.pdf
 
 # Pandoc temporary files
 *.pdf-
