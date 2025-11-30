@@ -48,7 +48,6 @@ arduino-ide_*.AppImage
 
 # Generated paper
 docs/paper/paper.pdf
-paper.pdf
 
 # Pandoc temporary files
 *.pdf-
