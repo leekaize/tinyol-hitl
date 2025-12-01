@@ -1,0 +1,3 @@
+# CWRU dataset pipeline dependencies
+scipy>=1.10.0
+numpy>=1.24.0

@@ -1,0 +1,48 @@
+name: Tests CWRU
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  core-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build and run core tests
+        run: |
+          cd core/tests
+          make test
+
+  cwru-benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache CWRU dataset
+        uses: actions/cache@v4
+        with:
+          path: core/tests/cwru/cache
+          key: cwru-dataset-v1
+
+      - name: Install Python deps
+        run: pip install -r core/tests/cwru/requirements.txt
+
+      - name: Download CWRU data
+        run: python3 core/tests/cwru/download.py
+
+      - name: Extract features
+        run: python3 core/tests/cwru/extract_features.py
+
+      - name: Run CWRU benchmark
+        run: |
+          cd core/tests
+          make test-cwru

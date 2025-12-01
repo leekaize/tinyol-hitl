@@ -1,0 +1,14 @@
+# Downloaded .mat files (regenerate with download.py)
+cache/
+
+# Extracted features (regenerate with extract_features.py)
+features.csv
+features_007.csv
+features_014.csv
+features_021.csv
+
+# Generated normalization params (regenerate with extract_features.py)
+normalization.h
+
+# Python virtual environment (auto-created by Makefile)
+.venv/

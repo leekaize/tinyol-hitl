@@ -254,8 +254,6 @@ So we split the research into 3 phases. First, we develop the model and make sur
 
 ---
 
----
-
 # Streaming K-Means: The Algorithm
 
 <div class="grid grid-cols-2 gap-8 items-center mt-4">
