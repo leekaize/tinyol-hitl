@@ -41,12 +41,7 @@ mdc: true
 </div>
 
 <!--
-Breaking down the title:
-- **Tiny** = Runs on microcontrollers (<5KB RAM)
-- **Online Learning** = Learns continuously from streaming data
-- **Human-in-the-Loop** = Operators label faults as discovered
-
-The result: Deploy immediately. No pre-training. System learns your specific machine.
+The title might seems quite intimidating, but don’t worry we’ll go through it step by step so that we’re on the same page. Now, we can imagine what is the final product we’re envisioning first. Imagine, a small device with sensor, that you can put onto any machine, and it will learn the vibration/current/temperature/etc. pattern of the machine, and tell you if something feels off.
 -->
 
 ---
@@ -86,6 +81,14 @@ The result: Deploy immediately. No pre-training. System learns your specific mac
 Sources: McKinsey 2021, MaintainX 2025, PwC 2018, Achouch et al., 2022
 </div>
 
+<!--
+The purpose of such a condition monitoring is to achieve predictive maintenance as shown in the figure here. To prevent unplanned downtime when machine totally break down, we can smoothly plan for inspection and repair when the machine starts giving signal to the sensor that something is wrong.
+
+Although knowing the benefits, the adoption still only at 27%, where traditionally they need ML engineer to connect all the sensors, to collect data and train models, where majority of the time is wasted on preparing the data, and 74% of pdm stuck at pilot projects. 24% of company cite that they cannot hire suitable experts to do such job where 80% of the companies is looking for cheaper open standard, easy to implement solutions.
+
+To tackle these, moving towards Tiny Machine Learning make sense, as it get rids of the complex infrastructure, and make those small devices dedicated to achieve exactly the intended function.
+-->
+
 ---
 
 # State of the Art: TinyML for PdM
@@ -95,8 +98,8 @@ Sources: McKinsey 2021, MaintainX 2025, PwC 2018, Achouch et al., 2022
 | Approach | Model/Remarks | Unsupervised | Online Learning |
 |----------|---------------|--------------|-----------------|
 | Cloud ML | Server-side | N/A | N/A |
-| (TODO) Most Relevant Unsupervised Learning |  |  |  |
-| TinyOL (Ren 2021) | Online Learning | ✗ | ✓ (Autoencoder) |
+| (TODO) Most Relevant Unsupervised Learning |  | ✓ | ✗ |
+| TinyOL (Ren 2021) | NN (Autoencoder) | Needs Pre-training | ✓ |
 | MCUNetV3 (Lin 2022) | CNN | Partial (Transfer Learning) | ✓ |
 | **TinyOL-HITL** | **Streaming K-Means** | **✓** | **✓** |
 
@@ -107,6 +110,18 @@ Sources: McKinsey 2021, MaintainX 2025, PwC 2018, Achouch et al., 2022
 ### The Gap
 - Most existing TinyML solutions require **pre-trained models**.
 - Real industrial deployment: **fault types unknown until discovered**.
+
+<!--
+If you still haven’t grasp what is TinyML, actually we all have all use it before, the “Ok, Google” or “Hey, Siri” is the earliest form of TinyML, it uses a dedicated chip on your phone, to learn your voice, and next time it can detect your calling it.
+
+Similarly, we can create device that can learn by sensing a machine, to detect different conditions of a machine.
+
+There has been a wide range of researches in this area, trying to run more and more complex neural networks or algorithms on smaller and smaller devices. But we’ll focus on two aspects today, the unsupervised and online learning of it, for some reasons we’ll talk about.
+
+What is unsupervised learning, it means the device figure out different machine conditions by itself, without you teaching it. And online learning is when the device adapts to new conditions over time.
+
+There had been some researches on those within the area, but frankly, no one combine those two into a pragmatic solution.
+-->
 
 ---
 
@@ -146,6 +161,12 @@ flowchart LR
 </div>
 </div>
 
+<!--
+So why do those abilities important, let’s imagine, when we buy a new machine, there is no way to generate fault data of it. And even when we have train a model, we might run the machine in different conditions or the readings will naturally drift even though the machine is running fine, so we need a model that is capable of adapting over time.
+
+So we come up with Tiny Online Learning with Human in the Loop to adapt over time reliably.
+-->
+
 ---
 
 # Research Questions
@@ -181,6 +202,10 @@ Can low-technical personnel train and operate the system in a natural, intuitive
 </div>
 
 </div>
+
+<!--
+Let’s summarize into 4 questions we’re trying to answer, is such a model capable of: Automatic detect machine abnomalies, learn the condition through human in the loop, stay accurate throughout and intuitive to be used by a non-technical personnel.
+-->
 
 ---
 
@@ -221,11 +246,45 @@ flowchart LR
 </div>
 </div>
 
+<!--
+So we split the research into 3 phases. First, we develop the model and make sure it achieve a good baseline accuracy in comparison with studies done on a industry-standard public dataset. Then we can implement the model in real world to test it’s capabilities in different conditions. And lastly we make sure the whole user experience is straightforward, accessible and explainable to non-technical person.
+-->
+
 ---
 
 # Streaming K-Means Clustering
 
+<div class="grid grid-cols-2 gap-8 items-center mt-10">
+<div>
 
+### The Core Algorithm
+1.  **Initialize:** Start with $K=1$ (Normal Operation).
+2.  **Stream:** Receive new data sample $x_t$.
+3.  **Distance Check:** Calculate distance to nearest cluster center $C_{nearest}$.
+4.  **Threshold:**
+    *   If $dist < \tau$: Update centroid (Learning).
+    *   If $dist > \tau$: Flag as **Anomaly**.
+5.  **HITL Action:** If confirmed by operator, create new cluster $K+1$.
+
+</div>
+<div class="flex justify-center">
+
+```mermaid
+graph TD
+    A([Incoming Data]) --> B{Distance < Threshold?}
+    B -- Yes --> C[Update Nearest Cluster]
+    B -- No --> D[Buffer Data & Alarm]
+    D --> E{Operator Label?}
+    E -- New Fault --> F[Create New Cluster K++]
+    E -- Ignore --> C
+```
+
+</div>
+</div>
+
+<!--
+This machine learning algorithm provides the capabilities we need, but frankly no one has done it on TinyML, at least not in public research. (Proceed to explain the algorithm)
+-->
 
 ---
 
@@ -270,6 +329,44 @@ typedef struct {
 </div>
 </div>
 
+<!--
+Then we’ll optimise the algorithm for least memory consumption with standard ways, getting rid of floating point, avoid square root, EMA updates, static memory allocation, ring buffer. (More details explanations to be updated)
+-->
+
+---
+
+# HITL: The State Machine
+
+Alarm ≠ Freeze. The system distinguishes between transient alarms and label-ready states.
+
+<div class="flex justify-center">
+<div class="w-140">
+
+```mermaid
+%%{init: {'themeVariables': { 'fontSize': '24px' }}}%%
+stateDiagram-v2
+    [*] --> NORMAL: Initialize K=1
+
+    NORMAL --> ALARM: Outlier detected
+    note right of ALARM: Motor running—<br/>Red banner<br/>on SCADA
+
+    ALARM --> NORMAL: Auto-clear
+
+    ALARM --> WAITING_LABEL: Motor stops
+    ALARM --> WAITING_LABEL: Operator hits Freeze
+    note left of WAITING_LABEL: Buffer Frozen<br/>Ready for input
+
+    WAITING_LABEL --> NORMAL: Label "Fault" → K++
+    WAITING_LABEL --> NORMAL: Discard
+```
+
+</div>
+</div>
+
+<!--
+And for the human in the loop part, the model initialised with one cluster, upon unsupervised abnormally detected, when the motor stopped, or when operator manually freeze the input, labelling can be done, where the model will learn if this cluster should be discarded, or learn as new cluster, or included into previous cluster.
+-->
+
 ---
 
 # CWRU Benchmark
@@ -302,6 +399,53 @@ Actual N [   ][   ][   ][   ]
 
 </div>
 </div>
+
+<!--
+After created such a model, it is automatically tested upon the CWRU benchmark, on 4 conditions of machine, where the model do incremental learning from random training set and tested upon the test sets.
+
+We have achieved X% accuracy, which is on par with these known studies.
+-->
+
+---
+
+# Test Rig Configuration
+
+<div class="grid grid-cols-2 gap-8">
+<div>
+
+### Hardware Platform
+
+| Component | Specification |
+|-----------|---------------|
+| MCU 1 | ESP32 DEVKIT V1 (Xtensa) |
+| MCU 2 | RP2350 Pico 2W (ARM) |
+| Vibration | MPU6050 / ADXL345 |
+| Current | ZMCT103C × 3 phases |
+| Motor | 2 HP, 3.1A, 1.5kW |
+| Control | VFD (0-60 Hz) |
+
+</div>
+<div>
+
+### Test Conditions
+
+| Type | Conditions |
+|------|------------|
+| **Normal** | Stopped |
+| | 15 Hz running |
+| | 20 Hz running |
+| **Faults** | Eccentric weight (light) |
+| | Eccentric weight (heavy) |
+| | Phase loss |
+
+</div>
+</div>
+
+<!--
+Then we can implement it on a real-world system, we test run on multiple type of microcontrollers and sensors, showing it is hardware-agnostic, where the framework can be applied to every kind of sensor device setup, and make sure the test is not biased.
+
+We measure the vibration and current of a 3 phase asynchronous motor with variable speed. Where we inject different conditions or faults to be detected, included motor running on different speeds, having different severity of rotor imbalance, and lost of single phase.
+-->
 
 ---
 
@@ -341,117 +485,9 @@ crest = peak / rms       // Impulsiveness
 </div>
 </div>
 
----
-
-# Test Rig Configuration
-
-<div class="grid grid-cols-2 gap-8">
-<div>
-
-### Hardware Platform
-
-| Component | Specification |
-|-----------|---------------|
-| MCU 1 | ESP32 DEVKIT V1 (Xtensa) |
-| MCU 2 | RP2350 Pico 2W (ARM) |
-| Vibration | MPU6050 / ADXL345 |
-| Current | ZMCT103C × 3 phases |
-| Motor | 2 HP, 3.1A, 1.5kW |
-| Control | VFD (0-60 Hz) |
-
-</div>
-<div>
-
-### Test Conditions
-
-| Type | Conditions |
-|------|------------|
-| **Normal** | Stopped |
-| | 15 Hz running |
-| | 20 Hz running |
-| **Faults** | Eccentric weight (light) |
-| | Eccentric weight (heavy) |
-| | Phase loss |
-
-</div>
-</div>
-
----
-
-# HITL: The State Machine
-
-Alarm ≠ Freeze. The system distinguishes between transient alarms and label-ready states.
-
-<div class="flex justify-center">
-<div class="w-140">
-
-```mermaid
-%%{init: {'themeVariables': { 'fontSize': '24px' }}}%%
-stateDiagram-v2
-    [*] --> NORMAL: Initialize K=1
-
-    NORMAL --> ALARM: Outlier detected
-    note right of ALARM: Motor running—<br/>Red banner<br/>on SCADA
-
-    ALARM --> NORMAL: Auto-clear
-
-    ALARM --> WAITING_LABEL: Motor stops
-    ALARM --> WAITING_LABEL: Operator hits Freeze
-    note left of WAITING_LABEL: Buffer Frozen<br/>Ready for input
-
-    WAITING_LABEL --> NORMAL: Label "Fault" → K++
-    WAITING_LABEL --> NORMAL: Discard
-```
-
-</div>
-</div>
-
----
-
-# Integration: API & MQTT
-
-<div class="grid grid-cols-2 gap-4">
-<div>
-
-### Device API (8 Functions)
-
-```c
-// 1. Init K=1
-kmeans_init(&model, FEATURE_DIM, 0.2f);
-
-// 2. Stream & Update
-int8_t c = kmeans_update(&model, feats);
-
-// 3. Handle Alarm Logic
-if (c == -1 && kmeans_is_waiting(&model)) {
-    // Operator labeled via MQTT
-    kmeans_add_cluster(&model, "fault");
-}
-
-// 4. Manual Freeze
-kmeans_request_label(&model);
-```
-
-</div>
-<div>
-
-### SCADA JSON Payload
-
-```json
-{
-  "device_id": "motor_01",
-  "state": "ALARM",
-  "cluster": -1,
-  "k": 1,
-  "rms_avg": 5.2,
-  "peak_avg": 9.1
-}
-```
-
-**Topics:** `data`, `label`, `discard`, `freeze`
-
-</div>
-</div>
+<!--
+Then we take different set of features we can feed into the model to test out the performance. Where the industry-standard is using FFT to get more useful frequency-domain signatures. So the full diagnosis will be based on 12 dimensions of data on different vibration frequency signatures and electrical current data.
+-->
 
 ---
 
@@ -510,6 +546,69 @@ sequenceDiagram
 The system transitions from <strong>Alarm</strong> to <strong>Learning</strong> seamlessly via the freeze mechanism.
 </div>
 
+<!--
+So here’s how our test is carried out, we have the motor run with normal condition which the status is shown on a SCADA interface. Then upon injecting a different running condition or fault, it will detect the abnormally and show on SCADA.
+
+The system will switch from alarm to learning mode upon motor stopped, or operator manually freeze through SCADA.
+
+Then the operator can inspect the machine, and label or discard the alarm. The device learn the pattern, so next time it’ll give correct prediction.
+
+Script: [Show the APIs and steps to connect to SCADA and overall workflow for operator]
+-->
+
+---
+
+# Integration: API & MQTT
+
+<div class="grid grid-cols-2 gap-4">
+<div>
+
+### Device API (8 Functions)
+
+```c
+// 1. Init K=1
+kmeans_init(&model, FEATURE_DIM, 0.2f);
+
+// 2. Stream & Update
+int8_t c = kmeans_update(&model, feats);
+
+// 3. Handle Alarm Logic
+if (c == -1 && kmeans_is_waiting(&model)) {
+    // Operator labeled via MQTT
+    kmeans_add_cluster(&model, "fault");
+}
+
+// 4. Manual Freeze
+kmeans_request_label(&model);
+```
+
+</div>
+<div>
+
+### SCADA JSON Payload
+
+```json
+{
+  "device_id": "motor_01",
+  "state": "ALARM",
+  "cluster": -1,
+  "k": 1,
+  "rms_avg": 5.2,
+  "peak_avg": 9.1
+}
+```
+
+**Topics:** `data`, `label`, `discard`, `freeze`
+
+</div>
+</div>
+
+<!--
+To allow the operator interaction, a standard set of MQTT API is given and set in SCADA, the operator can get the system status, freeze the system, label or discard the state.
+
+(Then show video or pictures of real-world test)
+-->
+
 ---
 
 # Model Performance
@@ -537,6 +636,12 @@ xychart-beta
 </div>
 </div>
 
+<!--
+(Showing the accuracy of each condition, and maybe through majority voting, it achieve perfect accuracy)
+
+And with all these features, it run at X kb memory, able to be deployed on most microcontrollers.
+-->
+
 ---
 
 # Key Contributions
@@ -557,10 +662,23 @@ xychart-beta
 <v-click>
 
 ### Development Roadmap
-- **Current:** Research Prototype & Algorithm Validation
-- **Future:** Cluster merging, Auto-threshold tuning, Energy harvesting support
+
+- **Custom Hardware:** Build custom PCB into a minimal form factor.
+- **Multi-Modal:** Test with temperature, humidity, and sound sensors.
+- **Transfer Learning:** Vendor pre-trained base models with client-side incremental learning.
+- **Self-Sustained:** Energy harvesting integration for true plug-and-play.
 
 </v-click>
+
+<!--
+In comparison with the TinyOL model proposed by Siemens research team, our framework gives a more intuitive implementation flow for less technical personnel.
+
+Future enhancements:
+1. Company can build custom PCB into a minimal form to attach onto any machines.
+2. Can test the performance with different sensors/combinations, including also temperature/humidity/sound etc.
+3. Vendor can train base model for specific machine with known conditions, using Transfer Learning idea to build a purpose-built device, yet it will incremental learn special use-cases of client.
+4. Make it self-sustained, with energy harvesting through vibration/temperature, so that it can truly be a modular plug-and-play device that you put on any machinery.
+-->
 
 ---
 layout: center
@@ -578,6 +696,10 @@ layout: center
 - TinyOL-HITL proves: Unsupervised + Human-in-the-Loop can be Industrial-Ready PdM
 
 </v-clicks>
+
+<!--
+Sometimes it is better to take a step back and see what is the simplest way to solve the most pressing problem. Instead of making the solution more complex, sometimes we just need to make it more accessible. For the research conclusion, Tiny Online-Learning with Human-in-the-loop is plausible for Industrial Condition Monitoring, even for less technical personnel.
+-->
 
 ---
 layout: end
