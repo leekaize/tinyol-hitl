@@ -95,21 +95,23 @@ To tackle these, moving towards Tiny Machine Learning make sense, as it get rids
 
 <div class="text-sm">
 
-| Approach | Model/Remarks | Unsupervised | Online Learning |
-|----------|---------------|--------------|-----------------|
-| Cloud ML | Server-side | N/A | N/A |
-| (TODO) Most Relevant Unsupervised Learning |  | ✓ | ✗ |
-| TinyOL (Ren 2021) | NN (Autoencoder) | Needs Pre-training | ✓ |
-| MCUNetV3 (Lin 2022) | CNN | Partial (Transfer Learning) | ✓ |
-| **TinyOL-HITL** | **Streaming K-Means** | **✓** | **✓** |
+| Approach | Method | Unsupervised | Online | Memory |
+|----------|--------|--------------|--------|--------|
+| Amruthnath 2018 | K-Means + PCA | ✓ | ✗ Batch | Cloud |
+| Isolation Forest | Tree-based | ✓ | ✗ Batch | ~50KB |
+| TinyOL (Ren 2021) | Autoencoder | ✗ Pre-train | ✓ | ~100KB |
+| MCUNetV3 (Lin 2022) | CNN | ✗ Pre-train | ✓ | 256KB |
+| **TinyOL-HITL** | **Streaming K-Means** | **✓** | **✓** | **<5KB** |
 
 </div>
 
 <span></span>
 
 ### The Gap
-- Most existing TinyML solutions require **pre-trained models**.
-- Real industrial deployment: **fault types unknown until discovered**.
+- Amruthnath showed K-means detects faults **without labels** (~80% on CWRU)
+- But **batch-only**: needs full dataset upfront, incompatible with edge
+- TinyOL/MCUNetV3: online learning, but **need pre-trained models**
+- **No system combines: unsupervised + online + HITL + tiny**
 
 <!--
 If you still haven’t grasp what is TinyML, actually we all have all use it before, the “Ok, Google” or “Hey, Siri” is the earliest form of TinyML, it uses a dedicated chip on your phone, to learn your voice, and next time it can detect your calling it.

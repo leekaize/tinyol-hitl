@@ -102,83 +102,70 @@ This informs our feature schema selection, providing operators with accuracy-mem
 
 \subsection{Unsupervised Learning for Anomaly Detection}
 
-Industrial deployments rarely have labeled failure data. Unsupervised methods detect anomalies without supervision but face interpretability challenges.
+Industrial deployments rarely have labeled failure data. Unsupervised methods detect anomalies without supervision.
 
-\textbf{Isolation Forest} \cite{liu2008IsolationForest} achieves O(n log n) complexity by isolating anomalies via random partitioning. Martin-del-Campo et al. \cite{martin-del-campo2020UnsupervisedRankingOutliers} applied Isolation Forest with dictionary learning to wind turbine SCADA data, achieving 92\% detection rate. Mousavi and Gandomi \cite{mousavi2022UNSUPERVISEDCONDITIONMONITORING} combined Variational Mode Decomposition with Isolation Forest for structural health monitoring. Zhong et al. \cite{zhong2019NovelUnsupervisedAnomaly} validated on gas turbines with 95.7\% precision.
+\textbf{K-means for fault detection:} Amruthnath and Gupta \cite{amruthnath2018ResearchStudyUnsupervised} systematically compared unsupervised methods on exhaust fan vibration data: PCA T2 statistic, hierarchical clustering, k-means, fuzzy c-means, and Gaussian mixture models. K-means achieved highest silhouette score (0.72) with clear cluster separation between normal and faulty states. Critical finding: unsupervised methods detect faults \textit{without labeled failure data}, addressing cold-start problems. However, their batch implementation requires complete datasets upfront---incompatible with streaming edge deployment.
 
-However, Isolation Forest provides no fault classification---only binary anomaly flags. Maintenance requires actionable diagnosis, not just alerts.
+\textbf{Isolation Forest} \cite{liu2008IsolationForest} isolates anomalies via random partitioning with O(n log n) complexity. Martin-del-Campo et al. \cite{martin-del-campo2020UnsupervisedRankingOutliers} achieved 92\% detection on wind turbine SCADA data. Limitation: binary anomaly flags only---no fault classification for maintenance decisions.
 
-\textbf{Autoencoders} \cite{jakubowski2021AnomalyDetectionAsset} compress normal patterns via encoder-decoder architecture. Anomalies produce high reconstruction error. Jakubowski et al. achieved 89.3\% F1-score on asset degradation with Variational Autoencoders (VAE). Challenge: autoencoders require substantial memory (10-50KB parameters) and struggle with incremental updates.
+\textbf{Autoencoders} \cite{jakubowski2021AnomalyDetectionAsset} learn normal patterns via encoder-decoder reconstruction. Anomalies produce high reconstruction error. Jakubowski et al. achieved 89.3\% F1-score on asset degradation. Challenge: 10-50KB parameters, difficult incremental updates.
 
-\textbf{K-means clustering} groups similar patterns but requires pre-specified K. Amruthnath and Gupta \cite{amruthnath2018ResearchStudyUnsupervised} compared k-means, DBSCAN, and Gaussian Mixture Models (GMM) on bearing data, finding k-means superior for spherical clusters but sensitive to initialization.
-
-\textbf{Gap:} Unsupervised methods detect anomalies but lack actionable classification. Operators receive alerts without root cause diagnosis.
+\textbf{Gap:} Unsupervised methods detect anomalies but provide no actionable classification. Operators receive alerts without root cause diagnosis. Batch requirements prevent edge deployment.
 
 \subsection{Incremental and Online Learning}
 
-Streaming data requires incremental updates without batch retraining. Classical ML assumes fixed datasets---inappropriate for continuous machinery monitoring.
+Streaming data requires incremental updates without batch retraining.
 
-\textbf{Mini-batch k-means} \cite{hicks2021MbkmeansFastClustering} reduces memory from 52GB to 0.98GB by updating centroids in fixed-size batches. AutoCloud K-Fixed \cite{ahmatshin2024MinibatchKMeansClustering} optimizes batch size B, exhibiting $O(dk(b+\log B))$ complexity with memory optimum at $B=n^{1/2}$.
+\textbf{Mini-batch k-means} \cite{hicks2021MbkmeansFastClustering} reduces memory by updating centroids in fixed-size batches. Ahmatshin and Kazakovtsev \cite{ahmatshin2024MinibatchKMeansClustering} achieve $O(dk(b+\log B))$ complexity. Still requires pre-specified K.
 
-\textbf{BIRCH} \cite{zhang1996BIRCHEfficientData} (Balanced Iterative Reducing and Clustering using Hierarchies) maintains Cluster Feature Trees for one-pass incremental clustering. Memory: O(K) vs O(nK) for batch k-means. Limitation: assumes spherical clusters, fails with arbitrary shapes.
+\textbf{Streaming k-means} \cite{shindler2011FastAccurateKmeans} uses exponential moving average (EMA) updates:
+\begin{equation}
+c_{new} = c_{old} + \alpha(x - c_{old})
+\end{equation}
+where $\alpha = \alpha_{base} / (1 + \lambda \cdot count)$ decays with sample count. Advantages: O(KD) constant memory, single-pass processing. Flores et al. \cite{flores2025EnhancedVectorQuantization} achieved $>$90\% compression on automotive data using incremental EMA clustering.
 
-\textbf{DenStream} \cite{cao2006DensityBasedClusteringEvolving} extends DBSCAN for data streams through potential and outlier micro-clusters. Handles concept drift by aging cluster weights exponentially. Requires density threshold $\epsilon$ and min-points tuning---non-trivial for heterogeneous machinery signals.
+\textbf{BIRCH} \cite{zhang1996BIRCHEfficientData} maintains Cluster Feature Trees for one-pass clustering with O(K) memory. Handles noise effectively but assumes spherical clusters and fixed K.
 
-\textbf{Streaming k-means} \cite{shindler2011FastAccurateKmeans} uses exponential moving average (EMA) updates: $c_{k,\text{new}} = c_{k,\text{old}} + \alpha(x - c_{k,\text{old}})$. Advantages: constant memory O(KD), adaptive learning rate $\alpha$. Enhanced Vector Quantization \cite{flores2025EnhancedVectorQuantization} achieved $>$90\% compression on automotive data through incremental EMA.
-
-\textbf{Gap:} All methods require fixed K upfront. Industrial reality: fault types unknown until discovered.
+\textbf{Gap:} All methods require K upfront. Industrial reality: fault types unknown until discovered during operation.
 
 \subsection{Human-in-the-Loop Machine Learning}
 
-Active learning reduces labeling burden by querying high-uncertainty samples. Mosqueira-Rey et al. \cite{mosqueira-rey2023HumanintheloopMachineLearning} provide comprehensive taxonomy of HITL-ML, categorizing approaches:
-\begin{itemize}
-    \item \textbf{Active learning:} Query samples near decision boundaries. Wei et al. \cite{wei2019CostawareActiveLearning} achieved 20.5-30.2\% annotation time reduction via cost-aware sampling.
-    \item \textbf{Interactive machine learning:} Operator corrections refine models in real-time. Fails-Rechermann et al. \cite{fails2003InteractiveMachineLearning} demonstrated immediate feedback loops improve accuracy 15-25\%.
-    \item \textbf{Curriculum learning:} Present examples in difficulty order. Reduces training samples 30-40\% \cite{bengio2009CurriculumLearning}.
-\end{itemize}
+Mosqueira-Rey et al. \cite{mosqueira-rey2023HumanintheloopMachineLearning} categorize HITL approaches: active learning (query uncertain samples), interactive ML (real-time corrections), and curriculum learning (progressive difficulty). Wei et al. \cite{wei2019CostawareActiveLearning} achieved 20-30\% annotation reduction via cost-aware sampling.
 
-\textbf{Dairy DigiD} \cite{mahato2025DairyDigiDEdgeCloud} deployed HITL on NVIDIA Jetson for livestock monitoring, achieving 3.2\% mAP improvement with 84\% reduction in technician training time. Key insight: domain experts provide corrections faster than labeled datasets.
+Mahato and Neethirajan \cite{mahato2025DairyDigiDEdgeCloud} deployed HITL on NVIDIA Jetson for livestock monitoring, achieving 3.2\% mAP improvement with 84\% reduction in technician training time. Key insight: domain experts provide corrections faster than labeled datasets.
 
-\textbf{Gap:} HITL-ML typically augments supervised learning. No system uses HITL to \textit{define} classes dynamically---discovering fault types through operator feedback rather than pre-labeled taxonomies.
+\textbf{Gap:} HITL typically augments supervised learning with fixed classes. No system uses HITL to \textit{discover} fault classes dynamically through operator feedback.
 
 \subsection{CWRU Bearing Fault Benchmark}
 
-Case Western Reserve University bearing dataset \cite{smith2015RollingElementBearing} remains standard benchmark. 4 classes: normal, ball defect, inner race, outer race. 12kHz sampling, 0.007-0.040 inch fault depths.
+The Case Western Reserve University bearing dataset \cite{smith2015RollingElementBearing} is the standard benchmark: 4 classes (normal, ball, inner race, outer race), 12kHz sampling, 0.007-0.040 inch fault depths.
 
-Traditional ML (SVM, KNN) achieves 85-95\% \cite{amruthnath2018ResearchStudyUnsupervised}. Basic CNNs reach 95-98\%. Lite CNN \cite{yoo2023lite} achieved 99.86\% with 0.64\% parameters vs ResNet50.
+Published results span wide accuracy ranges. Rosa et al. \cite{rosa2024benchmarking} benchmarked deep learning models: basic CNNs achieve 95-98\%, Lite CNN \cite{yoo2023lite} reached 99.86\% with 0.64\% of ResNet50 parameters. However, Rosa identified data leakage in typical random splits---same bearings appear in train/test, inflating results 2-10\%.
 
-However, Rosa et al. \cite{rosa2024benchmarking} identified data leakage in typical train/test splits. Random splits mix different time periods from same bearing, inflating results 2-10\%. Proper protocol: separate bearings for train/test, cross-validate across fault types.
+Amruthnath and Gupta \cite{amruthnath2018ResearchStudyUnsupervised} reported unsupervised k-means baseline of $\sim$80\% on CWRU without labels---our direct comparison point.
 
-\textbf{Gap:} Most papers report accuracy on random splits. Real-world generalization requires unseen bearings and evolving fault conditions---not addressed by static benchmarks.
+\textbf{Gap:} Most papers report supervised accuracy on random splits. Unsupervised streaming performance on proper train/test separation remains underexplored.
 
 \subsection{Summary of Research Gaps}
 
 \begin{table}[h]
 \centering
 \caption{Capability Comparison}
-\begin{tabular}{p{2.5cm}cccc}
+\begin{tabular}{lccc}
 \toprule
-System & No Labels & Incremental & Open Std \\
+System & Unsupervised & Online & Memory \\
 \midrule
-TinyOL \cite{ren2021TinyOLTinyMLOnlinelearning} & No & Yes & No \\
-Isolation Forest \cite{martin-del-campo2020UnsupervisedRankingOutliers} & Yes & No & No \\
-BIRCH \cite{zhang1996BIRCHEfficientData} & Yes & Yes & No \\
-Dairy DigiD \cite{mahato2025DairyDigiDEdgeCloud} & No & Yes & No \\
+K-means batch \cite{amruthnath2018ResearchStudyUnsupervised} & \checkmark & $\times$ & Cloud \\
+Isolation Forest \cite{liu2008IsolationForest} & \checkmark & $\times$ & $\sim$50KB \\
+TinyOL \cite{ren2021TinyOLTinyMLOnlinelearning} & $\times$ & \checkmark & $\sim$100KB \\
+MCUNetV3 \cite{lin2022mcunetv3} & $\times$ & \checkmark & 256KB \\
 \midrule
-\textbf{TinyOL-HITL} & Yes & Yes & Yes \\
+\textbf{TinyOL-HITL} & \checkmark & \checkmark & $<$5KB \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-No existing system:
-\begin{enumerate}
-    \item Starts unsupervised (no labeled data required)
-    \item Learns incrementally through operator feedback
-    \item Uses open protocols (MQTT/Modbus/OPC-UA ready)
-    \item Validates cross-architecture (Xtensa + ARM)
-\end{enumerate}
-
-TinyOL-HITL fills this gap.
+No existing system: (1) starts unsupervised without labeled data, (2) learns incrementally through operator feedback, (3) runs on $<$5KB memory, and (4) uses open protocols for industrial integration. TinyOL-HITL fills this gap.
 
 \section{System Architecture}
 
