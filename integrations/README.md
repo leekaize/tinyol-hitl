@@ -1,386 +1,239 @@
-# FUXA SCADA Integration
+# FUXA Dashboard Design for TinyOL-HITL
 
-Open-source web SCADA. Freeze-on-alarm workflow. Label outliers via dashboard.
+## Layout (Simplified)
 
-## Setup Flow
-
-```mermaid
-graph TD
-    A[Start] --> B[Run FUXA + Mosquitto]
-    B --> C[Add MQTT device]
-    C --> D[Subscribe to topics]
-    D --> E[Map JSON to tags]
-    E --> F[Create dashboard]
-    F --> G[Test workflow]
-
-    style G fill:#90EE90
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  ⚠️ ANOMALY DETECTED - INSPECT MOTOR                    [ALARM] │  ← Red (alarm_active=true)
+├─────────────────────────────────────────────────────────────────┤
+│  ⏸️ READY FOR LABEL                                    [FROZEN] │  ← Blue (waiting_label=true)
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐          │
+│  │   STATE      │  │   CLUSTERS   │  │    MOTOR     │          │
+│  │   NORMAL     │  │    K = 2     │  │   RUNNING    │          │
+│  └──────────────┘  └──────────────┘  └──────────────┘          │
+│                                                                 │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │  VIBRATION RMS    ████████████░░░░░░░░░░  5.2 m/s²     │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
+├─────────────────────────────────────────────────────────────────┤
+│  OPERATOR CONTROLS                                              │
+│                                                                 │
+│  Label: [_______________]  [FREEZE]     [DISCARD]    [RESET]   │
+│                                                                 │
+│  Hint: Type existing label to train, new label to create K++   │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-## Quick Start
+---
+
+## Step-by-Step FUXA Setup
+
+### 1. Start Services
 
 ```bash
-# FUXA SCADA
-docker run -d -p 1881:1881 \
-  -v fuxa_appdata:/usr/src/app/FUXA/server/_appdata \
-  frangoteam/fuxa:latest
+# Terminal 1: MQTT Broker
+docker run -d -p 1883:1883 --name mosquitto eclipse-mosquitto:latest
 
-# Mosquitto MQTT
-docker run -d -p 1883:1883 \
-  -v $(pwd)/mosquitto/config:/mosquitto/config \
-  eclipse-mosquitto:latest
+# Terminal 2: FUXA SCADA
+docker run -d -p 1881:1881 --name fuxa frangoteam/fuxa:latest
 
-# Access: http://localhost:1881
+# Open browser: http://localhost:1881
 ```
 
-## MQTT Device Setup
+### 2. Add MQTT Connection
 
-```mermaid
-sequenceDiagram
-    participant FUXA
-    participant Broker
-    participant Device
+1. Click **Connections** (left sidebar)
+2. Click **+ Add** → Select **MQTTclient**
+3. Configure:
+   - Name: `mqtt_broker`
+   - Broker URL: `mqtt://YOUR_PC_IP:1883`
+   - Client ID: `fuxa_scada`
+   - QoS: 0
+4. Click **Save**
+5. Status should show **Connected** (green)
 
-    FUXA->>Broker: Connect (mqtt://localhost:1883)
-    Broker->>FUXA: Connected ✓
+### 3. Create Tags (Data Bindings)
 
-    FUXA->>Broker: Subscribe: sensor/+/data
+Go to **Devices** → Click your MQTT device → **Tags**
 
-    Device->>Broker: Publish: sensor/device1/data
-    Broker->>FUXA: Forward message
+| Tag Name | Subscribe Topic | JSON Path | Type |
+|----------|-----------------|-----------|------|
+| `state` | `sensor/tinyol_motor01/data` | `state` | String |
+| `alarm_active` | `sensor/tinyol_motor01/data` | `alarm_active` | Boolean |
+| `waiting_label` | `sensor/tinyol_motor01/data` | `waiting_label` | Boolean |
+| `motor_running` | `sensor/tinyol_motor01/data` | `motor_running` | Boolean |
+| `k` | `sensor/tinyol_motor01/data` | `k` | Integer |
+| `cluster` | `sensor/tinyol_motor01/data` | `cluster` | Integer |
+| `vib_rms_avg` | `sensor/tinyol_motor01/data` | `vib_rms_avg` | Float |
+| `vib_peak_max` | `sensor/tinyol_motor01/data` | `vib_peak_max` | Float |
+| `buffer_samples` | `sensor/tinyol_motor01/data` | `buffer_samples` | Integer |
 
-    Note over FUXA: Parse JSON<br/>Update tags
-```
+### 4. Create Dashboard Widgets
 
-**In FUXA:**
+#### A. Alarm Banner (Red)
+- **Type:** Rectangle
+- **Position:** Top, full width, height 50px
+- **Background:** `#FF0000` (red)
+- **Text:** `⚠️ ANOMALY DETECTED - INSPECT MOTOR`
+- **Font:** Bold, 18px, white
+- **Visibility:** Bind to `alarm_active` → Show when `true`
 
-1. Connections → Add → MQTTclient
-2. Name: `mqtt_broker`
-3. Broker: `mqtt://localhost:1883`
-4. QoS: 0 (fastest)
+#### B. Frozen Banner (Blue)
+- **Type:** Rectangle
+- **Position:** Below alarm banner, full width, height 40px
+- **Background:** `#2196F3` (blue)
+- **Text:** `⏸️ READY FOR LABEL`
+- **Visibility:** Bind to `waiting_label` → Show when `true`
 
-## Tag Mapping
+#### C. State Display
+- **Type:** Text
+- **Bind:** `state`
+- **Colors:**
+  - NORMAL = green
+  - ALARM = red
+  - WAITING_LABEL = blue
 
-**Subscribe:** `sensor/+/data` (all devices)
+#### D. Cluster Count
+- **Type:** Text
+- **Format:** `K = {k}`
+- **Bind:** `k`
 
-**Map flat JSON fields:**
+#### E. Motor Status
+- **Type:** LED indicator
+- **Bind:** `motor_running`
+- **On color:** Green
+- **Off color:** Gray
 
-| Tag | JSON Path | Type | Description |
-|-----|-----------|------|-------------|
-| alarm_active | `alarm_active` | bool | Red banner visible |
-| frozen | `frozen` | bool | Sampling stopped |
-| idle | `idle` | bool | Motor stopped |
-| cluster | `cluster` | int | Current cluster ID |
-| label | `label` | string | Fault name |
-| k | `k` | int | Total clusters |
-| rms_avg | `rms_avg` | float | Vibration (10s avg) |
-| rms_max | `rms_max` | float | Vibration (10s max) |
-| peak_avg | `peak_avg` | float | Peak (10s avg) |
-| crest_avg | `crest_avg` | float | Crest (10s avg) |
-| buffer_samples | `buffer_samples` | int | Frozen buffer size |
+#### F. RMS Gauge
+- **Type:** Horizontal bar / Gauge
+- **Bind:** `vib_rms_avg`
+- **Min:** 0, **Max:** 20
+- **Yellow zone:** > 10
+- **Red zone:** > 15
 
-## Dashboard Layout
+#### G. Peak Gauge
+- **Type:** Horizontal bar / Gauge
+- **Bind:** `vib_peak_max`
+- **Min:** 0, **Max:** 30
 
-```mermaid
-graph TB
-    A[Alarm Banner<br/>Red, flashing] --> B{alarm_active?}
-    B -->|true| C[Show banner]
-    B -->|false| D[Hide banner]
+### 5. Create Buttons (Only 4)
 
-    E[Idle Banner<br/>Blue] --> F{idle?}
-    F -->|true| G[Show: Motor stopped]
-    F -->|false| H[Hide]
+#### SUBMIT Button (Label or Assign - auto-detected)
+- **Type:** Button
+- **Text:** "SUBMIT"
+- **Enabled when:** `waiting_label == true`
+- **Action:** MQTT Publish
+  - Topic: `tinyol/tinyol_motor01/label`
+  - Payload: `{"label":"${label_input}"}`
+- **Note:** Add text input `label_input` next to it. Device auto-detects if label exists.
 
-    I[Status Display] --> J[Cluster: label]
-    I --> K[K: total clusters]
+#### FREEZE Button
+- **Type:** Button
+- **Text:** "FREEZE"
+- **Enabled when:** `alarm_active == true AND waiting_label == false`
+- **Action:** MQTT Publish
+  - Topic: `tinyol/tinyol_motor01/freeze`
+  - Payload: `{"freeze":true}`
 
-    L[Gauges] --> M[RMS: 0-20 m/s²]
-    L --> N[Peak: 0-30 m/s²]
-    L --> O[Crest: 0-5]
+#### DISCARD Button
+- **Type:** Button
+- **Text:** "DISCARD"
+- **Enabled when:** `waiting_label == true`
+- **Action:** MQTT Publish
+  - Topic: `tinyol/tinyol_motor01/discard`
+  - Payload: `{"discard":true}`
 
-    P[Summary Table] --> Q[Last 20 summaries<br/>timestamp, cluster, rms]
+#### RESET Button
+- **Type:** Button
+- **Text:** "RESET"
+- **Background:** Red
+- **Always enabled**
+- **Action:** MQTT Publish
+  - Topic: `tinyol/tinyol_motor01/reset`
+  - Payload: `{"reset":true}`
 
-    R[Operator Controls] --> S[Input: label name]
-    R --> T[Button: Label]
-    R --> U[Button: Discard]
-```
+---
 
-## Operator Workflow
+## Button Enable/Disable Logic
 
-```mermaid
-stateDiagram-v2
-    [*] --> Monitoring: Normal operation
+| Button | Enabled When | Action |
+|--------|--------------|--------|
+| SUBMIT | `waiting_label == true` | Label (auto: new K++ or train existing) |
+| FREEZE | `alarm_active == true` AND `waiting_label == false` | Manual freeze |
+| DISCARD | `waiting_label == true` | Clear buffer |
+| RESET | Always | Reset to K=1 |
 
-    Monitoring --> AlarmTrigger: RMS spike detected
-    AlarmTrigger --> RedBanner: Device freezes
+---
 
-    RedBanner --> PhysicalCheck: Operator walks to motor
+## MQTT Topics (5 Total)
 
-    PhysicalCheck --> MotorRunning: Check conditions
-    MotorRunning --> RedBanner: Still running
+| Topic | Payload | Result |
+|-------|---------|--------|
+| `sensor/{id}/data` | Auto | Device → SCADA status |
+| `tinyol/{id}/label` | `{"label":"name"}` | Auto: new cluster OR train existing |
+| `tinyol/{id}/freeze` | `{"freeze":true}` | Manual freeze |
+| `tinyol/{id}/discard` | `{"discard":true}` | Clear buffer |
+| `tinyol/{id}/reset` | `{"reset":true}` | Reset to K=1 |
 
-    PhysicalCheck --> MotorStopped: Motor stops
-    MotorStopped --> BlueBanner: Shift change
+---
 
-    BlueBanner --> NextShift: Wait for operator
-    NextShift --> Inspect: Physical inspection
-
-    Inspect --> Decision: What found?
-
-    Decision --> Label: Real fault
-    Label --> CreateCluster: "Type#58; 'bearing_fault'"
-    CreateCluster --> Monitoring: K = K + 1
-
-    Decision --> Discard: False alarm
-    Discard --> Monitoring: K unchanged
-
-    RedBanner --> Inspect: Immediate response
-```
-
-## Widget Configuration
-
-**1. Alarm Banner**
-
-```yaml
-Type: Rectangle
-Visibility: alarm_active == true
-Background: #FF0000 (red)
-Text: "⚠️ ANOMALY DETECTED - INSPECT MOTOR"
-Font: Bold, 24px
-Position: Top, full width
-Animation: Flashing (optional)
-```
-
-**2. Idle Banner**
-
-```yaml
-Type: Rectangle
-Visibility: idle == true
-Background: #2196F3 (blue)
-Text: "⏸️ MOTOR IDLE - Alarm Held"
-Font: Normal, 18px
-Position: Below alarm banner
-Height: 50px
-```
-
-**3. Gauges**
-
-```yaml
-RMS Gauge:
-  Min: 0
-  Max: 20
-  Bind: rms_avg
-  Yellow: >10
-  Red: >15
-
-Peak Gauge:
-  Min: 0
-  Max: 30
-  Bind: peak_avg
-  Yellow: >15
-  Red: >20
-
-Crest Gauge:
-  Min: 0
-  Max: 5
-  Bind: crest_avg
-  Yellow: >2
-  Red: >3
-```
-
-**4. Label Button**
-
-```yaml
-Type: Button
-Text: "Label"
-Enabled: alarm_active == true
-Action: MQTT Publish
-  Topic: tinyol/{device_id}/label
-  Payload: {"label":"${label_input}"}
-```
-
-**5. Discard Button**
-
-```yaml
-Type: Button
-Text: "Discard"
-Enabled: alarm_active == true
-Action: MQTT Publish
-  Topic: tinyol/{device_id}/discard
-  Payload: {"discard":true}
-```
-
-## Test Workflow
-
-```mermaid
-sequenceDiagram
-    participant Test
-    participant Broker
-    participant FUXA
-    participant Device
-
-    Note over Test: 1. Normal data
-    Test->>Broker: sensor/test/data<br/>{alarm_active: false, rms_avg: 5.2}
-    Broker->>FUXA: Update gauges
-
-    Note over FUXA: Green status
-
-    Note over Test: 2. Trigger alarm
-    Test->>Broker: sensor/test/data<br/>{alarm_active: true, buffer_samples: 100}
-    Broker->>FUXA: Show red banner
-
-    Note over FUXA: Red banner visible<br/>Buttons enabled
-
-    Note over FUXA: 3. Operator labels
-    FUXA->>Broker: tinyol/test/label<br/>{"label":"bearing_fault"}
-    Broker->>Device: Create cluster
-
-    Device->>Broker: sensor/test/data<br/>{cluster: 1, k: 2, alarm_active: false}
-    Broker->>FUXA: Hide banner, show C1
-
-    Note over FUXA: Green status<br/>K = 2 clusters
-```
-
-## Troubleshooting
-
-```mermaid
-graph TD
-    A[Problem?] --> B{Banner not showing?}
-    B -->|Yes| C[Check visibility:<br/>alarm_active == true]
-
-    A --> D{Buttons not working?}
-    D -->|Yes| E[Subscribe to tinyol/#<br/>mosquitto_sub]
-
-    A --> F{Device not receiving?}
-    F -->|Yes| G[Check Serial Monitor<br/>Should print: Labeled]
-
-    A --> H{Gauges frozen?}
-    H -->|Yes| I[Normal: 10s updates<br/>Not real-time]
-```
-
-## Manual Testing
-
-**1. Publish normal data:**
+## Test Commands (Terminal)
 
 ```bash
-mosquitto_pub -h localhost -t "sensor/test/data" \
-  -m '{
-    "alarm_active":false,
-    "frozen":false,
-    "idle":false,
-    "cluster":0,
-    "label":"normal",
-    "rms_avg":5.2,
-    "peak_avg":9.1,
-    "crest_avg":1.75
-  }'
+# Subscribe to see device data
+mosquitto_sub -h localhost -t "sensor/#" -v
+
+# Simulate alarm (for testing FUXA without device)
+mosquitto_pub -h localhost -t "sensor/tinyol_motor01/data" \
+  -m '{"state":"ALARM","alarm_active":true,"waiting_label":false,"k":1,"vib_rms_avg":12.5}'
+
+# Simulate waiting for label
+mosquitto_pub -h localhost -t "sensor/tinyol_motor01/data" \
+  -m '{"state":"WAITING_LABEL","alarm_active":true,"waiting_label":true,"k":1,"buffer_samples":50}'
+
+# Send label (NEW cluster if label doesn't exist, TRAIN existing if it does)
+mosquitto_pub -h localhost -t "tinyol/tinyol_motor01/label" -m '{"label":"unbalance"}'
+
+# Send freeze command
+mosquitto_pub -h localhost -t "tinyol/tinyol_motor01/freeze" -m '{"freeze":true}'
+
+# Send discard command
+mosquitto_pub -h localhost -t "tinyol/tinyol_motor01/discard" -m '{"discard":true}'
+
+# Send reset command
+mosquitto_pub -h localhost -t "tinyol/tinyol_motor01/reset" -m '{"reset":true}'
 ```
 
-**2. Trigger alarm:**
+---
 
-```bash
-mosquitto_pub -h localhost -t "sensor/test/data" \
-  -m '{
-    "alarm_active":true,
-    "frozen":true,
-    "cluster":-1,
-    "buffer_samples":100,
-    "rms_avg":12.3
-  }'
-```
-
-**3. Test idle:**
-
-```bash
-mosquitto_pub -h localhost -t "sensor/test/data" \
-  -m '{
-    "alarm_active":true,
-    "frozen":true,
-    "idle":true,
-    "rms_avg":0.3
-  }'
-```
-
-**4. Send label:**
-
-```bash
-mosquitto_pub -h localhost \
-  -t "tinyol/test_device/label" \
-  -m '{"label":"bearing_fault"}'
-```
-
-## Real Scenarios
-
-### Scenario A: Immediate Response
+## Workflow Diagram
 
 ```mermaid
-graph LR
-    A[2:00 PM<br/>Alarm] --> B[2:05 PM<br/>Walk to motor]
-    B --> C[2:10 PM<br/>Inspect bearing]
-    C --> D[2:15 PM<br/>Label fault]
-    D --> E[2:16 PM<br/>Resume monitoring]
+flowchart TD
+    A[Monitor Dashboard] --> B{alarm_active?}
+    B -->|No| A
+    B -->|Yes| C[Red Banner Shows]
+
+    C --> D{waiting_label?}
+    D -->|No| E[Click FREEZE or wait for motor stop]
+    D -->|Yes| F[SUBMIT/DISCARD enabled]
+
+    E --> F
+
+    F --> G{What did operator find?}
+    G -->|Real fault| H[Type label → SUBMIT]
+    G -->|False alarm| I[Click DISCARD]
+
+    H --> J{Label exists?}
+    J -->|No| K[K++ new cluster]
+    J -->|Yes| L[Train existing cluster]
+
+    K --> M[Resume NORMAL]
+    L --> M
+    I --> M
 ```
 
-### Scenario B: Shift Change
-
-```mermaid
-graph LR
-    A[2:00 PM<br/>Alarm] --> B[5:00 PM<br/>Shift ends]
-    B --> C[5:01 PM<br/>Motor stops]
-    C --> D[Blue banner]
-    D --> E[6:00 PM<br/>Next shift arrives]
-    E --> F[6:30 PM<br/>Inspect safely]
-    F --> G[7:00 PM<br/>Label fault]
-```
-
-### Scenario C: False Alarm
-
-```mermaid
-graph LR
-    A[Alarm] --> B[Inspect] --> C[Nothing wrong]
-    C --> D[Click Discard]
-    D --> E[Resume<br/>K unchanged]
-```
-
-## Production Config
-
-**Security (optional):**
-
-```bash
-# Mosquitto with auth
-listener 8883
-cafile /mosquitto/config/ca.crt
-certfile /mosquitto/config/server.crt
-keyfile /mosquitto/config/server.key
-allow_anonymous false
-password_file /mosquitto/config/passwords
-
-# Add user
-mosquitto_passwd -c passwords device1
-```
-
-**Backup:**
-
-```bash
-# Export FUXA config
-# Settings → Export → Download JSON
-
-# Backup Mosquitto
-docker cp mosquitto:/mosquitto/config backup/
-```
-
-## Next Steps
-
-1. ✓ Run Docker containers
-2. ✓ Add MQTT device
-3. ✓ Map tags
-4. Create dashboard widgets
-5. Test with real device
-6. Monitor production
-
-**Total time:** ~30 minutes
-
-## References
-
-- FUXA docs: https://frangoteam.github.io/
-- Mosquitto: https://mosquitto.org/
-- MQTT schema: [mqtt_schema.md](../docs/mqtt_schema.md)
+**Key insight:** One input handles both cases. Device auto-detects.

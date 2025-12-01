@@ -253,28 +253,6 @@ void mqttCallback(char* topic, byte* payload, unsigned int len) {
   // Print payload
   serializeJson(doc, Serial);
   Serial.println();
-
-  // Handle LABEL command
-  if (strstr(topic, "/label")) {
-    const char* label = doc["label"];
-    if (label) {
-      Serial.printf("[MQTT] Label command: '%s'\n", label);
-      if (kmeans_add_cluster(&model, label)) {
-        Serial.printf("[MQTT] ✓ Created cluster K=%d\n", model.k);
-        
-        // Save immediately after creating cluster
-        storage.save(&model);
-        
-        // Visual feedback
-        for(int i=0; i<3; i++) { 
-          digitalWrite(LED_BUILTIN, HIGH); delay(50); 
-          digitalWrite(LED_BUILTIN, LOW); delay(50); 
-        }
-      } else {
-        Serial.println("[MQTT] ✗ Label failed (not in WAITING_LABEL state?)");
-      }
-    }
-  }
   
   // Handle DISCARD command
   if (strstr(topic, "/discard")) {
@@ -316,24 +294,45 @@ void mqttCallback(char* topic, byte* payload, unsigned int len) {
     }
   }
 
-  // Handle ASSIGN command (assign buffer to existing cluster)
-  if (strstr(topic, "/assign")) {
-    if (doc.containsKey("cluster_id")) {
-      uint8_t cluster_id = doc["cluster_id"];
-      Serial.printf("[MQTT] Assign command: cluster %d\n", cluster_id);
-      if (kmeans_assign_existing(&model, cluster_id)) {
-        Serial.printf("[MQTT] ✓ Assigned buffer to cluster %d\n", cluster_id);
-        
-        // Save after assignment (cluster updated)
-        storage.save(&model);
-        
-        // Visual feedback
-        for(int i=0; i<2; i++) { 
-          digitalWrite(LED_BUILTIN, HIGH); delay(100); 
-          digitalWrite(LED_BUILTIN, LOW); delay(100); 
+  // Handle LABEL command (auto-assigns if label exists)
+  if (strstr(topic, "/label")) {
+    const char* label = doc["label"];
+    if (label) {
+      Serial.printf("[MQTT] Label command: '%s'\n", label);
+      
+      // Check if label already exists
+      int existing = -1;
+      for (uint8_t i = 0; i < model.k; i++) {
+        char existing_label[MAX_LABEL_LENGTH];
+        kmeans_get_label(&model, i, existing_label);
+        if (strcmp(existing_label, label) == 0) {
+          existing = i;
+          break;
+        }
+      }
+      
+      if (existing >= 0) {
+        // Assign to existing cluster
+        if (kmeans_assign_existing(&model, existing)) {
+          Serial.printf("[MQTT] ✓ Assigned to existing cluster %d\n", existing);
+          storage.save(&model);
+        } else {
+          Serial.println("[MQTT] ✗ Assign failed");
         }
       } else {
-        Serial.println("[MQTT] ✗ Assign failed (not in WAITING_LABEL state or invalid cluster?)");
+        // Create new cluster
+        if (kmeans_add_cluster(&model, label)) {
+          Serial.printf("[MQTT] ✓ Created cluster K=%d\n", model.k);
+          storage.save(&model);
+        } else {
+          Serial.println("[MQTT] ✗ Label failed");
+        }
+      }
+      
+      // Visual feedback
+      for(int i=0; i<3; i++) { 
+        digitalWrite(LED_BUILTIN, HIGH); delay(50); 
+        digitalWrite(LED_BUILTIN, LOW); delay(50); 
       }
     }
   }

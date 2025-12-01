@@ -573,7 +573,7 @@ Bottom line: First streaming k-means to outperform proper-split baselines on CWR
 | MCU 2 | RP2350 Pico 2W (ARM) |
 | Vibration | MPU6050 / ADXL345 |
 | Current | ZMCT103C × 3 phases |
-| Motor | 2 HP, 3.1A, 1.5kW |
+| Motor | 2 HP, 3 phases asynchronous |
 | Control | VFD (0-60 Hz) |
 
 </div>
@@ -710,49 +710,45 @@ Script: [Show the APIs and steps to connect to SCADA and overall workflow for op
 
 ---
 
-# Integration: API & MQTT
+# MQTT Integration
 
-<div class="grid grid-cols-2 gap-4">
+<div class="grid grid-cols-2 gap-6">
 <div>
 
-### Device API (8 Functions)
-
-```c
-// 1. Init K=1
-kmeans_init(&model, FEATURE_DIM, 0.2f);
-
-// 2. Stream & Update
-int8_t c = kmeans_update(&model, feats);
-
-// 3. Handle Alarm Logic
-if (c == -1 && kmeans_is_waiting(&model)) {
-    // Operator labeled via MQTT
-    kmeans_add_cluster(&model, "fault");
-}
-
-// 4. Manual Freeze
-kmeans_request_label(&model);
-```
+| Topic | SCADA (In/Out) | Action |
+|-------|-----|--------|
+| `sensor/{id}/data` | In | Status |
+| `tinyol/{id}/label` | Out | Assign: New/existing cluster |
+| `tinyol/{id}/discard` | Out | False alarm |
+| `tinyol/{id}/freeze` | Out | Switch to labelling |
+| `tinyol/{id}/reset` | Out | Reset K=1 |
 
 </div>
 <div>
 
-### SCADA JSON Payload
+### Example Payloads
 
+**Device publishes:**
 ```json
-{
-  "device_id": "motor_01",
-  "state": "ALARM",
-  "cluster": -1,
-  "k": 1,
-  "rms_avg": 5.2,
-  "peak_avg": 9.1
-}
+{"state":"ALARM", "k":2, "rms_avg":12.3}
 ```
 
-**Topics:** `data`, `label`, `discard`, `freeze`
+**Operator sends:**
+```json
+{"label": "unbalance"}
+```
+```json
+{"cluster_id": 1}
+```
+```json
+{"discard": true}
+```
 
 </div>
+</div>
+
+<div class="mt-4 text-sm opacity-75">
+Works with: FUXA, Node-RED, RapidSCADA, any MQTT broker
 </div>
 
 <!--
@@ -867,7 +863,7 @@ Code: [github.com/leekaize/tinyol-hitl](https://github.com/leekaize/tinyol-hitl)
 
 Slides: [leekaize.github.io/tinyol-hitl](https://leekaize.github.io/tinyol-hitl)
 
-Paper: [github.com/leekaize/tinyol-hitl/paper.pdf](https://github.com/leekaize/tinyol-hitl/paper.pdf)
+Paper: [paper.pdf](https://raw.githubusercontent.com/leekaize/tinyol-hitl/main/paper.pdf)
 
 </div>
 <div>
