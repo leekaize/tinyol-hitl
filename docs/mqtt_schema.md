@@ -134,6 +134,19 @@ tinyol/{device_id}/reset         # Reset model to K=1 (clears storage) [NEW]
 - Only works in `WAITING_LABEL` state
 - Clears alarm without creating cluster
 
+### Assign Existing (train existing cluster)
+```json
+{"cluster_id": 1}
+```
+- Only works in `WAITING_LABEL` state
+- Trains cluster 1 with all buffered samples
+- K stays the same
+- Clears alarm, resumes normal
+
+**Topic:** `tinyol/{device_id}/assign`
+
+**Use case:** Anomaly detected, but operator recognizes it as a known fault type (e.g., "that's the same unbalance we labeled last week").
+
 ### Freeze (manual button)
 ```json
 {"freeze": true}
@@ -241,6 +254,9 @@ mosquitto_pub -t "tinyol/test/label" -m '{"label":"unbalance"}'
 
 # Discard
 mosquitto_pub -t "tinyol/test/discard" -m '{"discard":true}'
+
+# Assign buffer to existing cluster
+mosquitto_pub -t "tinyol/test/assign" -m '{"cluster_id":1}'
 
 # Reset model to K=1
 mosquitto_pub -h localhost \

@@ -1,6 +1,9 @@
 /**
  * @file test_kmeans.c
- * @brief Simplified tests
+ * @brief Simplified tests - Updated for new state machine
+ *
+ * State machine: NORMAL → ALARM → WAITING_LABEL
+ * Must call kmeans_request_label() to transition from ALARM to WAITING_LABEL
  */
 
 #include "../streaming_kmeans.h"
@@ -54,12 +57,18 @@ TEST(freeze_on_outlier) {
 
     assert(model.state == STATE_NORMAL);
 
-    // Far outlier
+    // Far outlier -> goes to ALARM first
     fixed_t outlier[2] = {FLOAT_TO_FIXED(10.0f), FLOAT_TO_FIXED(10.0f)};
     int8_t cluster = kmeans_update(&model, outlier);
 
     assert(cluster == -1);
-    assert(model.state == STATE_FROZEN);
+    assert(model.state == STATE_ALARM);
+    assert(model.alarm_active == true);
+
+    // Manual freeze -> WAITING_LABEL
+    kmeans_request_label(&model);
+
+    assert(model.state == STATE_WAITING_LABEL);
     assert(model.buffer.frozen == true);
 }
 
@@ -75,7 +84,11 @@ TEST(add_cluster) {
     fixed_t outlier[2] = {FLOAT_TO_FIXED(5.0f), FLOAT_TO_FIXED(5.0f)};
     kmeans_update(&model, outlier);
 
-    assert(model.state == STATE_FROZEN);
+    assert(model.state == STATE_ALARM);
+
+    // Must request label before add_cluster works
+    kmeans_request_label(&model);
+    assert(model.state == STATE_WAITING_LABEL);
     assert(model.k == 1);
 
     bool ok = kmeans_add_cluster(&model, "fault");
@@ -101,7 +114,10 @@ TEST(discard) {
     fixed_t outlier[2] = {FLOAT_TO_FIXED(5.0f), FLOAT_TO_FIXED(5.0f)};
     kmeans_update(&model, outlier);
 
-    assert(model.state == STATE_FROZEN);
+    assert(model.state == STATE_ALARM);
+
+    kmeans_request_label(&model);
+    assert(model.state == STATE_WAITING_LABEL);
 
     kmeans_discard(&model);
 
@@ -112,14 +128,14 @@ TEST(discard) {
 
 TEST(prediction) {
     kmeans_model_t model;
-    kmeans_init(&model, 2, 0.2f);
+    kmeans_init(&model, 2, 0.1f);
 
     fixed_t point[2] = {FLOAT_TO_FIXED(0.3f), FLOAT_TO_FIXED(-0.2f)};
 
     uint8_t predicted = kmeans_predict(&model, point);
     int8_t updated = kmeans_update(&model, point);
 
-    assert(predicted == updated);
+    assert(predicted == (uint8_t)updated);
 }
 
 TEST(two_clusters) {
@@ -135,18 +151,21 @@ TEST(two_clusters) {
     // Trigger alarm
     fixed_t outlier[2] = {FLOAT_TO_FIXED(10.0f), FLOAT_TO_FIXED(10.0f)};
     kmeans_update(&model, outlier);
+
+    // Must request label first
+    kmeans_request_label(&model);
     kmeans_add_cluster(&model, "fault");
 
     assert(model.k == 2);
 
     // New baseline samples go to C0
     fixed_t p0[2] = {FLOAT_TO_FIXED(0.1f), FLOAT_TO_FIXED(0.1f)};
-    uint8_t c0 = kmeans_update(&model, p0);
+    uint8_t c0 = kmeans_predict(&model, p0);
     assert(c0 == 0);
 
     // New fault samples go to C1
     fixed_t p1[2] = {FLOAT_TO_FIXED(9.9f), FLOAT_TO_FIXED(9.9f)};
-    uint8_t c1 = kmeans_update(&model, p1);
+    uint8_t c1 = kmeans_predict(&model, p1);
     assert(c1 == 1);
 }
 
@@ -177,6 +196,7 @@ TEST(reset) {
 
     fixed_t outlier[2] = {FLOAT_TO_FIXED(5.0f), FLOAT_TO_FIXED(5.0f)};
     kmeans_update(&model, outlier);
+    kmeans_request_label(&model);
     kmeans_add_cluster(&model, "fault");
 
     assert(model.k == 2);
@@ -208,7 +228,8 @@ TEST(high_dimensional) {
     };
     kmeans_update(&model, fault);
 
-    if (model.state == STATE_FROZEN) {
+    if (model.state == STATE_ALARM) {
+        kmeans_request_label(&model);
         kmeans_add_cluster(&model, "fault");
         assert(model.k == 2);
     }

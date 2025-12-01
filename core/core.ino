@@ -70,7 +70,8 @@ ModelStorage storage;  // NEW: Persistence handler
   char topic_label[64];
   char topic_discard[64];
   char topic_freeze[64];
-  char topic_reset[64];  // NEW: Reset topic
+  char topic_reset[64];
+  char topic_assign[64];  // NEW: Assign to existing cluster
   unsigned long lastMqttAttempt = 0;
 #endif
 
@@ -211,13 +212,15 @@ void setup() {
       snprintf(topic_label, sizeof(topic_label), "tinyol/%s/label", DEVICE_ID);
       snprintf(topic_discard, sizeof(topic_discard), "tinyol/%s/discard", DEVICE_ID);
       snprintf(topic_freeze, sizeof(topic_freeze), "tinyol/%s/freeze", DEVICE_ID);
-      snprintf(topic_reset, sizeof(topic_reset), "tinyol/%s/reset", DEVICE_ID);  // NEW
+      snprintf(topic_reset, sizeof(topic_reset), "tinyol/%s/reset", DEVICE_ID);
+      snprintf(topic_assign, sizeof(topic_assign), "tinyol/%s/assign", DEVICE_ID);
       
       Serial.println("[MQTT] Topics Configured:");
       Serial.printf("  DATA:    %s\n", topic_data);
       Serial.printf("  LABEL:   %s\n", topic_label);
       Serial.printf("  DISCARD: %s\n", topic_discard);
-      Serial.printf("  RESET:   %s\n", topic_reset);  // NEW
+      Serial.printf("  RESET:   %s\n", topic_reset);
+      Serial.printf("  ASSIGN:  %s\n", topic_assign);
     } else {
       Serial.println(" FAILED");
     }
@@ -225,7 +228,8 @@ void setup() {
 
   Serial.println("\n=== READY ===\n");
   Serial.println("Commands via MQTT:");
-  Serial.println("  label:   {\"label\":\"fault_name\"}  - Create cluster");
+  Serial.println("  label:   {\"label\":\"fault_name\"}  - Create NEW cluster K++");
+  Serial.println("  assign:  {\"cluster_id\":1}         - Train EXISTING cluster");
   Serial.println("  discard: {\"discard\":true}         - Discard alarm");
   Serial.println("  freeze:  {\"freeze\":true}          - Manual freeze");
   Serial.println("  reset:   {\"reset\":true}           - Reset model to K=1");
@@ -290,7 +294,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int len) {
     }
   }
   
-  // NEW: Handle RESET command
+  // Handle RESET command
   if (strstr(topic, "/reset")) {
     if (doc["reset"] == true) {
       Serial.println("[MQTT] *** RESET COMMAND ***");
@@ -308,6 +312,28 @@ void mqttCallback(char* topic, byte* payload, unsigned int len) {
       for(int i=0; i<5; i++) { 
         digitalWrite(LED_BUILTIN, HIGH); delay(200); 
         digitalWrite(LED_BUILTIN, LOW); delay(200); 
+      }
+    }
+  }
+
+  // Handle ASSIGN command (assign buffer to existing cluster)
+  if (strstr(topic, "/assign")) {
+    if (doc.containsKey("cluster_id")) {
+      uint8_t cluster_id = doc["cluster_id"];
+      Serial.printf("[MQTT] Assign command: cluster %d\n", cluster_id);
+      if (kmeans_assign_existing(&model, cluster_id)) {
+        Serial.printf("[MQTT] ✓ Assigned buffer to cluster %d\n", cluster_id);
+        
+        // Save after assignment (cluster updated)
+        storage.save(&model);
+        
+        // Visual feedback
+        for(int i=0; i<2; i++) { 
+          digitalWrite(LED_BUILTIN, HIGH); delay(100); 
+          digitalWrite(LED_BUILTIN, LOW); delay(100); 
+        }
+      } else {
+        Serial.println("[MQTT] ✗ Assign failed (not in WAITING_LABEL state or invalid cluster?)");
       }
     }
   }
@@ -335,7 +361,8 @@ bool mqttConnect() {
     mqtt.subscribe(topic_label);
     mqtt.subscribe(topic_discard);
     mqtt.subscribe(topic_freeze);
-    mqtt.subscribe(topic_reset);  // NEW
+    mqtt.subscribe(topic_reset);
+    mqtt.subscribe(topic_assign);
     
     return true;
   }

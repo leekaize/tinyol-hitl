@@ -100,6 +100,8 @@ uint8_t kmeans_predict(const kmeans_model_t* model, const fixed_t* point);
 // Alarm handling
 bool kmeans_add_cluster(kmeans_model_t* model, const char* label);
 void kmeans_discard(kmeans_model_t* model);
+// Assign buffered anomaly to existing cluster (no K++)
+bool kmeans_assign_existing(kmeans_model_t* model, uint8_t cluster_id);
 void kmeans_request_label(kmeans_model_t* model);  // Manual button press
 
 // Status queries

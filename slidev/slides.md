@@ -254,38 +254,157 @@ So we split the research into 3 phases. First, we develop the model and make sur
 
 ---
 
-# Streaming K-Means Clustering
+---
 
-<div class="grid grid-cols-2 gap-8 items-center mt-10">
+# Streaming K-Means: The Algorithm
+
+<div class="grid grid-cols-2 gap-8 items-center mt-4">
 <div>
 
-### The Core Algorithm
-1.  **Initialize:** Start with $K=1$ (Normal Operation).
-2.  **Stream:** Receive new data sample $x_t$.
-3.  **Distance Check:** Calculate distance to nearest cluster center $C_{nearest}$.
-4.  **Threshold:**
-    *   If $dist < \tau$: Update centroid (Learning).
-    *   If $dist > \tau$: Flag as **Anomaly**.
-5.  **HITL Action:** If confirmed by operator, create new cluster $K+1$.
+### EMA Update Rule
+
+$$c_{new} = c_{old} + \alpha (x - c_{old})$$
+
+$$\alpha = \frac{\alpha_{base}}{1 + 0.01 \times count}$$
+
+### Why Streaming Works
+- **Small drift:** Centroid follows gradually
+- **Stable over time:** α decays with count
+- **O(1) memory:** No history stored
 
 </div>
 <div class="flex justify-center">
 
 ```mermaid
 graph TD
-    A([Incoming Data]) --> B{Distance < Threshold?}
-    B -- Yes --> C[Update Nearest Cluster]
-    B -- No --> D[Buffer Data & Alarm]
-    D --> E{Operator Label?}
-    E -- New Fault --> F[Create New Cluster K++]
-    E -- Ignore --> C
+    A([New Sample x]) --> B[Find nearest cluster k*]
+    B --> C{distance < τ ?}
+    C -- Yes --> D[Update centroid via EMA]
+    C -- No --> E[ANOMALY: Buffer sample]
+    D --> F([Next sample])
+    E --> G[Continue buffering until freeze]
 ```
 
 </div>
 </div>
 
+<div class="mt-4 p-3 bg-yellow-50 rounded text-sm">
+<strong>Key difference from batch k-means:</strong> Process one sample at a time. Never store full dataset. K can grow.
+</div>
+
 <!--
-This machine learning algorithm provides the capabilities we need, but frankly no one has done it on TinyML, at least not in public research. (Proceed to explain the algorithm)
+PRESENTER NOTES:
+
+The EMA (Exponential Moving Average) makes this "streaming" - no historical storage needed.
+
+Walk through the equation:
+- α_base typically 0.2 (20% weight to new sample)
+- As count grows, α shrinks - early samples matter more
+- After 100 samples: α ≈ 0.1. After 1000: α ≈ 0.02
+
+Threshold τ is based on cluster "radius" (inertia). Sample at 2× typical distance = anomaly.
+
+IMPORTANT: Anomaly samples get BUFFERED (up to 100) while waiting for operator. We don't just keep 1 sample - we capture the whole anomaly event for proper training.
+-->
+
+---
+
+# Human-in-the-Loop: Three Operator Actions
+
+When anomaly detected, system buffers samples. Operator inspects machine and chooses:
+
+<div class="grid grid-cols-3 gap-4 mt-4">
+
+<div class="p-4 border-2 border-green-500 rounded text-sm">
+
+### 1. New Label
+**"Never seen this fault"**
+
+- Creates cluster **K++**
+- Centroid = buffer average
+- Trained with N samples
+
+```
+Buffer: 87 samples
+    ↓
+K=3, "bearing_wear"
+count = 87
+```
+
+</div>
+
+<div class="p-4 border-2 border-blue-500 rounded text-sm">
+
+### 2. Assign Existing
+**"This is cluster X"**
+
+- Trains cluster X with buffer
+- **K stays same**
+- Refines existing cluster
+
+```
+Buffer: 87 samples
+    ↓
+Cluster "unbalance"
+count += 87
+```
+
+</div>
+
+<div class="p-4 border-2 border-gray-500 rounded text-sm">
+
+### 3. Discard
+**"False alarm / noise"**
+
+- Clears buffer
+- **K unchanged**
+- No learning
+
+```
+Buffer: 87 samples
+    ↓
+Deleted
+```
+
+</div>
+
+</div>
+
+<div class="flex justify-center mt-4">
+
+```mermaid
+flowchart LR
+    A[Anomaly<br/>Buffered] --> B{Operator Decision}
+    B -->|"New fault"| C[K++ new cluster]
+    B -->|"Known fault"| D[Train existing]
+    B -->|"Noise"| E[Discard buffer]
+```
+
+</div>
+
+<!--
+PRESENTER NOTES:
+
+This is crucial for CWRU testing. We have 4 classes: normal, ball, inner, outer.
+
+Without "Assign Existing":
+- First ball fault → K=2 "ball"
+- Second ball fault → K=3 "ball2" (wrong! should be same cluster)
+
+With "Assign Existing":
+- First ball fault → K=2 "ball" (new label)
+- Second ball fault → assign to cluster 1 → K stays 2, cluster refined
+
+The buffer is key. When motor stops, we might have 87 anomaly samples captured. All 87 train the cluster - not just 1 sample. This makes clusters robust.
+
+CWRU workflow:
+1. Stream normal → K=1
+2. First ball anomaly → new label "ball" → K=2
+3. More ball anomalies → assign existing cluster 1
+4. First inner race anomaly → new label "inner" → K=3
+5. More inner → assign existing cluster 2
+6. First outer → K=4
+7. Final: K=4 matching the 4 CWRU classes
 -->
 
 ---

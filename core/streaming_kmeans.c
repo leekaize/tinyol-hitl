@@ -13,13 +13,13 @@
 #include <stdlib.h>
 
 // PRNG for initialization
-static uint32_t rng_state = 12345;
+// static uint32_t rng_state = 12345;
 
-static fixed_t rand_fixed(fixed_t min, fixed_t max) {
-    rng_state = (1103515245 * rng_state + 12345) & 0x7FFFFFFF;
-    fixed_t range = max - min;
-    return min + (fixed_t)(((int64_t)range * rng_state) >> 31);
-}
+// static fixed_t rand_fixed(fixed_t min, fixed_t max) {
+//     rng_state = (1103515245 * rng_state + 12345) & 0x7FFFFFFF;
+//     fixed_t range = max - min;
+//     return min + (fixed_t)(((int64_t)range * rng_state) >> 31);
+// }
 
 bool kmeans_init(kmeans_model_t* model, uint8_t feature_dim, float learning_rate) {
     if (feature_dim > MAX_FEATURES || feature_dim == 0) return false;
@@ -172,6 +172,13 @@ int8_t kmeans_update(kmeans_model_t* model, const fixed_t* point) {
     return cluster_id;
 }
 
+uint8_t kmeans_predict(const kmeans_model_t* model, const fixed_t* point) {
+    if (!model->initialized || model->k == 0) return 0;
+    
+    fixed_t distance;
+    return find_nearest_cluster(model, point, &distance);
+}
+
 void kmeans_update_motor_status(kmeans_model_t* model, fixed_t rms, fixed_t current) {
     if (!model->initialized) return;
     
@@ -247,24 +254,62 @@ bool kmeans_add_cluster(kmeans_model_t* model, const char* label) {
 
     cluster_t* new_cluster = &model->clusters[model->k];
 
-    // Use last sample as centroid
-    uint16_t last_idx = (model->buffer.head > 0) ? 
-                        model->buffer.head - 1 : 
-                        model->buffer.count - 1;
-
-    memcpy(new_cluster->centroid, 
-           model->buffer.samples[last_idx], 
-           model->feature_dim * sizeof(fixed_t));
+    // NEW: Average ALL buffered samples (not just last one)
+    memset(new_cluster->centroid, 0, model->feature_dim * sizeof(fixed_t));
+    
+    for (uint16_t i = 0; i < model->buffer.count; i++) {
+        for (uint8_t d = 0; d < model->feature_dim; d++) {
+            // Accumulate then divide to avoid overflow
+            new_cluster->centroid[d] += model->buffer.samples[i][d] / (fixed_t)model->buffer.count;
+        }
+    }
 
     strncpy(new_cluster->label, label, MAX_LABEL_LENGTH - 1);
     new_cluster->label[MAX_LABEL_LENGTH - 1] = '\0';
     new_cluster->active = true;
-    new_cluster->count = 1;
+    new_cluster->count = model->buffer.count;  // Start with buffer size
     new_cluster->inertia = FLOAT_TO_FIXED(1.0f);
 
     model->k++;
 
     // Clear alarm state
+    model->state = STATE_NORMAL;
+    model->alarm_active = false;
+    model->waiting_label = false;
+    model->alarm_sample_count = 0;
+    model->normal_streak = 0;
+    
+    model->buffer.frozen = false;
+    model->buffer.head = 0;
+    model->buffer.count = 0;
+
+    return true;
+}
+
+bool kmeans_assign_existing(kmeans_model_t* model, uint8_t cluster_id) {
+    if (!model->initialized) return false;
+    if (model->state != STATE_WAITING_LABEL) return false;
+    if (cluster_id >= model->k) return false;
+    if (model->buffer.count == 0) return false;
+
+    cluster_t* cluster = &model->clusters[cluster_id];
+
+    // Train existing cluster with ALL buffered samples via EMA
+    for (uint16_t i = 0; i < model->buffer.count; i++) {
+        fixed_t* sample = model->buffer.samples[i];
+        
+        // EMA update with decay
+        float decay = 1.0f + 0.01f * cluster->count;
+        fixed_t alpha = FLOAT_TO_FIXED(FIXED_TO_FLOAT(model->learning_rate) / decay);
+        
+        for (uint8_t d = 0; d < model->feature_dim; d++) {
+            fixed_t diff = sample[d] - cluster->centroid[d];
+            cluster->centroid[d] += FIXED_MUL(alpha, diff);
+        }
+        cluster->count++;
+    }
+
+    // Clear alarm state (same as add_cluster)
     model->state = STATE_NORMAL;
     model->alarm_active = false;
     model->waiting_label = false;

@@ -18,14 +18,15 @@ jobs:
     - name: Build and test k-means
       run: |
         cd core/tests
+        make clean
         make test
 
     - name: Check memory footprint
       run: |
         cd core/tests
-        ./test_kmeans | grep "Model size"
-        SIZE=$(./test_kmeans | grep "Model size" | awk '{print $3}')
-        if [ $SIZE -gt 102400 ]; then
+        ./test_kmeans 2>&1 | grep "Model size"
+        SIZE=$(./test_kmeans 2>&1 | grep "Model size" | awk '{print $3}')
+        if [ "$SIZE" -gt 102400 ]; then
           echo "ERROR: Model size $SIZE exceeds 100KB"
           exit 1
         fi
@@ -46,9 +47,8 @@ jobs:
       run: |
         cd core
         cp config.template.h config.h
-        # Set test credentials
-        sed -i 's/YOUR_WIFI_SSID_HERE/test_ssid/g' config.h
-        sed -i 's/YOUR_WIFI_PASSWORD_HERE/test_pass/g' config.h
+        sed -i 's/YOUR_WIFI_SSID/test_ssid/g' config.h
+        sed -i 's/YOUR_WIFI_PASSWORD/test_pass/g' config.h
 
     - name: Cache Arduino CLI
       uses: actions/cache@v3
@@ -71,7 +71,7 @@ jobs:
         path: |
           ~/.arduino15/packages
           ~/Arduino/libraries
-        key: ${{ runner.os }}-arduino
+        key: ${{ runner.os }}-arduino-packages-v2
 
     - name: Install ESP32 core
       run: |

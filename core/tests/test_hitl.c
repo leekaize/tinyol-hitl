@@ -1,6 +1,8 @@
 /**
  * @file test_hitl.c
- * @brief Simplified HITL tests
+ * @brief HITL tests - Updated for new state machine
+ *
+ * State machine: NORMAL → ALARM → WAITING_LABEL
  */
 
 #include <stdio.h>
@@ -12,14 +14,20 @@
 #define PASS() printf("PASS\n")
 #define FAIL(msg) do { printf("FAIL: %s\n", msg); return 1; } while(0)
 
-void setup_frozen_state(kmeans_model_t* model) {
+// Helper: Create outlier and transition to WAITING_LABEL
+void setup_waiting_label_state(kmeans_model_t* model) {
+    // Build baseline
     for (int i = 0; i < 15; i++) {
         fixed_t p[2] = {FLOAT_TO_FIXED(0.1f), FLOAT_TO_FIXED(0.1f)};
         kmeans_update(model, p);
     }
 
+    // Outlier -> ALARM
     fixed_t outlier[2] = {FLOAT_TO_FIXED(5.0f), FLOAT_TO_FIXED(5.0f)};
     kmeans_update(model, outlier);
+
+    // Request label -> WAITING_LABEL
+    kmeans_request_label(model);
 }
 
 int test_correction_basic() {
@@ -28,7 +36,7 @@ int test_correction_basic() {
     kmeans_model_t model;
     kmeans_init(&model, 2, 0.3f);
 
-    setup_frozen_state(&model);
+    setup_waiting_label_state(&model);
     kmeans_add_cluster(&model, "fault");
 
     // Train clusters
@@ -38,7 +46,8 @@ int test_correction_basic() {
         kmeans_update(&model, p0);
 
         int8_t c = kmeans_update(&model, p1);
-        if (c == -1 && model.state == STATE_FROZEN) {
+        if (c == -1 && model.state == STATE_ALARM) {
+            kmeans_request_label(&model);
             kmeans_discard(&model);
         }
     }
@@ -91,7 +100,7 @@ int test_correction_count() {
     kmeans_model_t model;
     kmeans_init(&model, 2, 0.3f);
 
-    setup_frozen_state(&model);
+    setup_waiting_label_state(&model);
     kmeans_add_cluster(&model, "fault");
 
     fixed_t p[2] = {FLOAT_TO_FIXED(0.1f), FLOAT_TO_FIXED(0.1f)};
@@ -118,26 +127,32 @@ int test_label_retrieval() {
     kmeans_init(&model, 3, 0.2f);
 
     // First fault
+    setup_waiting_label_state(&model);
+    kmeans_add_cluster(&model, "ball_fault");
+
+    // Train first fault cluster
+    for (int i = 0; i < 15; i++) {
+        fixed_t p[3] = {FLOAT_TO_FIXED(5.0f), FLOAT_TO_FIXED(5.0f), FLOAT_TO_FIXED(5.0f)};
+        int8_t c = kmeans_update(&model, p);
+        if (c == -1 && model.state == STATE_ALARM) {
+            kmeans_request_label(&model);
+            kmeans_discard(&model);
+        }
+    }
+
+    // Second fault (far from first) - need new baseline first
     for (int i = 0; i < 15; i++) {
         fixed_t p[3] = {FLOAT_TO_FIXED(0.1f), FLOAT_TO_FIXED(0.1f), FLOAT_TO_FIXED(0.1f)};
         kmeans_update(&model, p);
     }
-    fixed_t outlier1[3] = {FLOAT_TO_FIXED(5.0f), FLOAT_TO_FIXED(5.0f), FLOAT_TO_FIXED(5.0f)};
-    kmeans_update(&model, outlier1);
-    kmeans_add_cluster(&model, "ball_fault");
 
-    // Second fault (far from first)
-    for (int i = 0; i < 15; i++) {
-        fixed_t p[3] = {FLOAT_TO_FIXED(10.0f), FLOAT_TO_FIXED(10.0f), FLOAT_TO_FIXED(10.0f)};
-        int8_t c = kmeans_update(&model, p);
-        if (c == -1 && model.state == STATE_FROZEN) {
-            kmeans_discard(&model);
-        }
-    }
     fixed_t outlier2[3] = {FLOAT_TO_FIXED(20.0f), FLOAT_TO_FIXED(20.0f), FLOAT_TO_FIXED(20.0f)};
     kmeans_update(&model, outlier2);
 
-    if (model.state != STATE_FROZEN) FAIL("second outlier didn't freeze");
+    if (model.state != STATE_ALARM) FAIL("second outlier didn't trigger alarm");
+
+    kmeans_request_label(&model);
+    if (model.state != STATE_WAITING_LABEL) FAIL("should be waiting label");
 
     kmeans_add_cluster(&model, "inner_race");
 
@@ -173,18 +188,28 @@ int test_correction_with_labels() {
     // Ball fault
     fixed_t ball[2] = {FLOAT_TO_FIXED(8.0f), FLOAT_TO_FIXED(8.0f)};
     kmeans_update(&model, ball);
+    kmeans_request_label(&model);
     kmeans_add_cluster(&model, "ball_fault");
 
-    // Inner race (far from ball)
-    for (int i = 0; i < 15; i++) {
-        fixed_t p[2] = {FLOAT_TO_FIXED(15.0f), FLOAT_TO_FIXED(15.0f)};
+    // Train ball cluster
+    for (int i = 0; i < 10; i++) {
+        fixed_t p[2] = {FLOAT_TO_FIXED(8.0f), FLOAT_TO_FIXED(8.0f)};
         int8_t c = kmeans_update(&model, p);
-        if (c == -1 && model.state == STATE_FROZEN) {
+        if (c == -1 && model.state == STATE_ALARM) {
+            kmeans_request_label(&model);
             kmeans_discard(&model);
         }
     }
+
+    // Inner race (far from ball)
+    for (int i = 0; i < 15; i++) {
+        fixed_t p[2] = {FLOAT_TO_FIXED(1.0f), FLOAT_TO_FIXED(1.0f)};
+        kmeans_update(&model, p);
+    }
+
     fixed_t inner[2] = {FLOAT_TO_FIXED(25.0f), FLOAT_TO_FIXED(25.0f)};
     kmeans_update(&model, inner);
+    kmeans_request_label(&model);
     kmeans_add_cluster(&model, "inner_race");
 
     // Point closer to ball but operator says inner
@@ -220,7 +245,10 @@ int test_freeze_workflow() {
     int8_t result = kmeans_update(&model, outlier);
 
     if (result != -1) FAIL("should return -1");
-    if (model.state != STATE_FROZEN) FAIL("should be frozen");
+    if (model.state != STATE_ALARM) FAIL("should be in alarm");
+
+    kmeans_request_label(&model);
+    if (model.state != STATE_WAITING_LABEL) FAIL("should be waiting label");
 
     kmeans_add_cluster(&model, "fault");
 
@@ -237,9 +265,9 @@ int test_discard_workflow() {
     kmeans_model_t model;
     kmeans_init(&model, 2, 0.2f);
 
-    setup_frozen_state(&model);
+    setup_waiting_label_state(&model);
 
-    if (model.state != STATE_FROZEN) FAIL("should be frozen");
+    if (model.state != STATE_WAITING_LABEL) FAIL("should be waiting label");
 
     kmeans_discard(&model);
 
@@ -250,65 +278,100 @@ int test_discard_workflow() {
     return 0;
 }
 
-int test_idle_detection() {
-    TEST(idle_detection);
+int test_assign_existing() {
+    TEST(assign_existing);
 
     kmeans_model_t model;
     kmeans_init(&model, 2, 0.2f);
 
-    setup_frozen_state(&model);
-
-    // Motor running
-    for (int i = 0; i < 5; i++) {
-        kmeans_update_idle(&model, FLOAT_TO_FIXED(5.0f), FLOAT_TO_FIXED(1.5f));
+    // Build baseline cluster
+    for (int i = 0; i < 20; i++) {
+        fixed_t p[2] = {FLOAT_TO_FIXED(0.1f), FLOAT_TO_FIXED(0.1f)};
+        kmeans_update(&model, p);
     }
 
-    if (model.state != STATE_FROZEN) FAIL("should stay frozen");
+    // First anomaly → new label "fault_A"
+    fixed_t outlier1[2] = {FLOAT_TO_FIXED(5.0f), FLOAT_TO_FIXED(5.0f)};
+    kmeans_update(&model, outlier1);
 
-    // Motor stops
-    for (int i = 0; i < 12; i++) {
-        kmeans_update_idle(&model, FLOAT_TO_FIXED(0.2f), FLOAT_TO_FIXED(0.05f));
+    if (model.state != STATE_ALARM) FAIL("should be in alarm");
+
+    kmeans_request_label(&model);
+    kmeans_add_cluster(&model, "fault_A");
+    if (model.k != 2) FAIL("K should be 2");
+
+    // Train fault_A cluster a bit
+    for (int i = 0; i < 10; i++) {
+        fixed_t p[2] = {FLOAT_TO_FIXED(5.1f), FLOAT_TO_FIXED(5.1f)};
+        int8_t c = kmeans_update(&model, p);
+        if (c == -1 && model.state == STATE_ALARM) {
+            kmeans_request_label(&model);
+            kmeans_discard(&model);
+        }
     }
 
-    if (model.state != STATE_FROZEN_IDLE) FAIL("should be idle");
-    if (!kmeans_is_idle(&model)) FAIL("should report idle");
+    uint32_t count_before = model.clusters[1].count;
 
-    kmeans_add_cluster(&model, "fault");
+    // Second anomaly (similar to fault_A) → assign existing, not new K
+    fixed_t outlier2[2] = {FLOAT_TO_FIXED(15.0f), FLOAT_TO_FIXED(15.0f)};
+    kmeans_update(&model, outlier2);
 
-    if (model.state != STATE_NORMAL) FAIL("should resume");
+    if (model.state != STATE_ALARM) FAIL("should be in alarm");
+
+    kmeans_request_label(&model);
+    if (model.state != STATE_WAITING_LABEL) FAIL("should be waiting label");
+
+    // Assign to existing cluster 1 (fault_A)
+    bool ok = kmeans_assign_existing(&model, 1);
+
+    if (!ok) FAIL("assign_existing should succeed");
+    if (model.k != 2) FAIL("K should still be 2");
+    if (model.state != STATE_NORMAL) FAIL("should resume normal");
+    if (model.clusters[1].count <= count_before) FAIL("count should increase");
 
     PASS();
     return 0;
 }
 
-int test_idle_persistence() {
-    TEST(idle_persistence);
+int test_assign_existing_invalid() {
+    TEST(assign_existing_invalid);
 
     kmeans_model_t model;
     kmeans_init(&model, 2, 0.2f);
 
-    setup_frozen_state(&model);
+    // Try assign when not in waiting_label (should fail)
+    bool ok = kmeans_assign_existing(&model, 0);
+    if (ok) FAIL("should fail when not in waiting_label");
 
-    // Go idle
-    for (int i = 0; i < 12; i++) {
-        kmeans_update_idle(&model, FLOAT_TO_FIXED(0.1f), 0);
-    }
+    // Try assign to invalid cluster
+    setup_waiting_label_state(&model);
+    ok = kmeans_assign_existing(&model, 99);
+    if (ok) FAIL("should fail for invalid cluster_id");
 
-    if (model.state != STATE_FROZEN_IDLE) FAIL("should be idle");
+    PASS();
+    return 0;
+}
 
-    // Stay idle for long time
-    for (int i = 0; i < 100; i++) {
-        kmeans_update_idle(&model, FLOAT_TO_FIXED(0.1f), 0);
-    }
+int test_motor_status() {
+    TEST(motor_status);
 
-    if (model.state != STATE_FROZEN_IDLE) FAIL("should persist");
+    kmeans_model_t model;
+    kmeans_init(&model, 2, 0.2f);
 
-    // Motor restarts
+    // Initially motor is running
+    if (!kmeans_is_motor_running(&model)) FAIL("motor should start as running");
+
+    // Simulate motor running (high vibration)
     for (int i = 0; i < 5; i++) {
-        kmeans_update_idle(&model, FLOAT_TO_FIXED(5.0f), 0);
+        kmeans_update_motor_status(&model, FLOAT_TO_FIXED(5.0f), FLOAT_TO_FIXED(1.5f));
     }
+    if (!kmeans_is_motor_running(&model)) FAIL("motor should be running with high vibration");
 
-    if (model.state != STATE_FROZEN) FAIL("should return to frozen");
+    // Simulate motor stopping (low vibration for 10+ samples)
+    for (int i = 0; i < 12; i++) {
+        kmeans_update_motor_status(&model, FLOAT_TO_FIXED(0.2f), FLOAT_TO_FIXED(0.05f));
+    }
+    if (kmeans_is_motor_running(&model)) FAIL("motor should be stopped");
 
     PASS();
     return 0;
@@ -324,8 +387,9 @@ int main() {
     failures += test_correction_with_labels();
     failures += test_freeze_workflow();
     failures += test_discard_workflow();
-    failures += test_idle_detection();
-    failures += test_idle_persistence();
+    failures += test_assign_existing();
+    failures += test_assign_existing_invalid();
+    failures += test_motor_status();
 
     if (failures == 0) {
         printf("\n=== All HITL Tests Passed ===\n");
