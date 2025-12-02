@@ -101,7 +101,7 @@ To tackle these, moving towards Tiny Machine Learning make sense, as it get rids
 | Isolation Forest | Tree-based | ✓ | ✗ Batch | ~50KB |
 | TinyOL (Ren 2021) | Autoencoder | ✗ Pre-train | ✓ | ~100KB |
 | MCUNetV3 (Lin 2022) | CNN | ✗ Pre-train | ✓ | 256KB |
-| **TinyOL-HITL** | **Streaming K-Means** | **✓** | **✓** | **<5KB** |
+| **TinyOL-HITL** | **Streaming K-Means** | **✓** | **✓** | **<30KB** |
 
 </div>
 
@@ -607,11 +607,11 @@ Three feature sets to balance accuracy vs. complexity.
 
 <div class="text-sm">
 
-| Schema | Features | Dim | Memory | Use Case |
-|--------|----------|-----|--------|----------|
-| **TIME_ONLY** | RMS, Peak, Crest | 3D | 1.6 KB | Minimal setup |
-| **FFT_TIME** | Time + HR₁, HR₂, HER, SF, SK, ΔC | 9D | 4.5 KB | Better accuracy |
-| **FFT_CURRENT** | FFT_TIME + i₁, i₂, i₃ | 12D | 5.0 KB | Full diagnosis |
+| Schema | Features | Dim | Use Case |
+|--------|----------|-----|----------|
+| **TIME_ONLY** | RMS, Peak, Crest | 3D | Minimal setup |
+| **FFT_TIME** | Time + HR₁, HR₂, HER, SF, SK, ΔC | 9D | Better accuracy |
+| **FFT_CURRENT** | FFT_TIME + i₁, i₂, i₃ | 12D | Full diagnosis |
 
 </div>
 
