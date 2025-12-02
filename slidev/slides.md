@@ -759,64 +759,38 @@ To allow the operator interaction, a standard set of MQTT API is given and set i
 
 ---
 
-# Model Performance
+# Hardware Test Rig
 
-<div class="grid grid-cols-2 gap-4">
-
-<div>
-(TODO) Showing Passed All Tests
+<div class="flex justify-center">
+  <img src="/test-rig.jpeg" class="h-100 rounded-lg shadow-xl" alt="Motor Test Rig" />
 </div>
 
-<div>
-
-### Memory Comparison
-
-```mermaid
-xychart-beta
-    title "RAM Usage Comparison (KB)"
-    x-axis ["TinyOL", "TinyTL", "MCUNetV3", "TinyOL-HITL"]
-    y-axis "RAM (KB)" 0 --> 300
-    bar [100, 50, 256, 5]
-```
-
-**TinyOL-HITL: ~5 KB** — Runs on virtually any MCU (20× smaller than TinyOL)
-
+<div class="text-center mt-4 text-sm opacity-75">
+2 HP induction motor with VFD control, MPU6050 accelerometer, ESP32 MCU
 </div>
-</div>
-
-<!--
-(Showing the accuracy of each condition, and maybe through majority voting, it achieve perfect accuracy)
-
-And with all these features, it run at X kb memory, able to be deployed on most microcontrollers.
--->
 
 ---
 
-# Key Contributions
+# Live Demo
 
 <div class="flex justify-center">
-
-| Aspect | TinyOL (Ren 2021) | TinyOL-HITL (Ours) |
-|--------|-------------------|---------------------|
-| Pre-training | ✓ Required | ✗ None |
-| Initial classes | Fixed | K=1, grows dynamically |
-| Memory | ~100KB SRAM | < 5 KB total |
-| Alarm Logic | N/A | State Machine (Alarm ≠ Freeze) |
-| HITL | None | Core feature |
-| Protocol | Proprietary | Standard MQTT |
-
+  <video controls class="h-100 rounded-lg shadow-xl">
+    <source src="/demo.mp4" type="video/mp4" />
+  </video>
 </div>
 
-<v-click>
+<div class="text-center mt-4 text-sm opacity-75">
+HITL workflow: Bootstrap → Normal → Alarm → Label → Recognition
+</div>
 
-### Development Roadmap
+---
+
+# Future Research
 
 - **Custom Hardware:** Build custom PCB into a minimal form factor.
 - **Multi-Modal:** Test with temperature, humidity, and sound sensors.
 - **Transfer Learning:** Vendor pre-trained base models with client-side incremental learning.
 - **Self-Sustained:** Energy harvesting integration for true plug-and-play.
-
-</v-click>
 
 <!--
 In comparison with the TinyOL model proposed by Siemens research team, our framework gives a more intuitive implementation flow for less technical personnel.

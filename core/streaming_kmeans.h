@@ -35,15 +35,20 @@ typedef int32_t fixed_t;
  * - WAITING_LABEL: Frozen, motor stopped OR button pressed, ready for label
  */
 typedef enum {
-    STATE_NORMAL,        // Green - all good
-    STATE_ALARM,         // Red banner - outlier detected, motor running
-    STATE_WAITING_LABEL  // Red + frozen - ready for operator input
+    STATE_BOOTSTRAP,     // NEW: K=0, collecting baseline
+    STATE_NORMAL,
+    STATE_ALARM,
+    STATE_WAITING_LABEL
 } system_state_t;
 
+// Add bootstrap threshold
+#define BOOTSTRAP_SAMPLES 50  // Samples before creating first cluster
+
 // Thresholds for motor-stopped detection
-#define IDLE_RMS_THRESHOLD FLOAT_TO_FIXED(0.5f)      // m/s²
-#define IDLE_CURRENT_THRESHOLD FLOAT_TO_FIXED(0.1f)  // Amps
-#define IDLE_CONSECUTIVE_SAMPLES 10                   // 1 second @ 10Hz
+#define IDLE_RMS_THRESHOLD FLOAT_TO_FIXED(1.5f)      // m/s²
+#define RUNNING_RMS_THRESHOLD FLOAT_TO_FIXED(2.5f)   // Motor ON if RMS > 2.5 (hysteresis)
+#define IDLE_CURRENT_THRESHOLD FLOAT_TO_FIXED(0.2f)  // Amps
+#define IDLE_CONSECUTIVE_SAMPLES 30                   // 1 second @ 10Hz
 #define ALARM_CLEAR_SAMPLES 30                        // 3 seconds of normal = auto-clear
 
 typedef struct {

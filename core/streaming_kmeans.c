@@ -25,11 +25,11 @@ bool kmeans_init(kmeans_model_t* model, uint8_t feature_dim, float learning_rate
     if (feature_dim > MAX_FEATURES || feature_dim == 0) return false;
 
     memset(model, 0, sizeof(kmeans_model_t));
-    model->k = 1;
+    model->k = 0;  // START WITH K=0
     model->feature_dim = feature_dim;
     model->learning_rate = FLOAT_TO_FIXED(learning_rate);
-    model->state = STATE_NORMAL;
-    model->outlier_threshold = FLOAT_TO_FIXED(2.0f);
+    model->state = STATE_BOOTSTRAP;  // NEW STATE
+    model->outlier_threshold = FLOAT_TO_FIXED(8.0f);  // Less sensitive
     
     // Alarm state
     model->alarm_active = false;
@@ -107,11 +107,39 @@ bool kmeans_is_outlier(const kmeans_model_t* model, const fixed_t* point) {
 int8_t kmeans_update(kmeans_model_t* model, const fixed_t* point) {
     if (!model->initialized) return -1;
     
-    // WAITING_LABEL state: frozen, reject updates
-    if (model->state == STATE_WAITING_LABEL) return -1;
+    // WAITING_LABEL: frozen, reject updates
+    if (model->state == STATE_WAITING_LABEL) {
+        return -1;
+    }
 
-    // Add to ring buffer (for potential labeling later)
+    // Add to ring buffer
     buffer_add_sample(&model->buffer, point, model->feature_dim);
+
+    // BOOTSTRAP MODE: K=0, collecting first baseline
+    if (model->state == STATE_BOOTSTRAP) {  
+        if (model->buffer.count >= BOOTSTRAP_SAMPLES) {
+            // Create first cluster from buffer average
+            cluster_t* first = &model->clusters[0];
+            memset(first->centroid, 0, model->feature_dim * sizeof(fixed_t));
+            
+            for (uint16_t i = 0; i < model->buffer.count; i++) {
+                for (uint8_t d = 0; d < model->feature_dim; d++) {
+                    first->centroid[d] += model->buffer.samples[i][d] / (fixed_t)model->buffer.count;
+                }
+            }
+            
+            strncpy(first->label, "normal", MAX_LABEL_LENGTH - 1);
+            first->active = true;
+            first->count = model->buffer.count;
+            first->inertia = FLOAT_TO_FIXED(1.0f);
+            
+            model->k = 1;
+            model->state = STATE_NORMAL;
+            model->buffer.head = 0;
+            model->buffer.count = 0;
+        }
+        return 0;  // No cluster assignment during bootstrap
+    }
 
     // Find nearest cluster
     fixed_t distance;
@@ -185,33 +213,58 @@ void kmeans_update_motor_status(kmeans_model_t* model, fixed_t rms, fixed_t curr
     model->last_rms = rms;
     model->last_current = current;
     
-    // Detect idle: low vibration AND low current
-    bool is_idle = (rms < IDLE_RMS_THRESHOLD);
+    float rms_f = FIXED_TO_FLOAT(rms);
+    float current_f = FIXED_TO_FLOAT(current);
+    
+    // Debug output
+    // Serial.printf("[Motor] RMS=%.2f, I=%.2f, idle_count=%d, running=%s\n",
+                //   rms_f, current_f, model->idle_count,
+                //   model->motor_running ? "YES" : "NO");
+    
+    // Hysteresis: different thresholds for on→off vs off→on
+    bool is_idle;
+    if (model->motor_running) {
+        // Currently running: need LOW values to switch to idle
+        is_idle = (rms < IDLE_RMS_THRESHOLD);
+    } else {
+        // Currently idle: need HIGH values to switch to running
+        is_idle = (rms < RUNNING_RMS_THRESHOLD);
+    }
+    
+    // Also check current if available
     if (current > 0) {
-        is_idle = is_idle && (current < IDLE_CURRENT_THRESHOLD);
+        if (model->motor_running) {
+            is_idle = is_idle && (current < IDLE_CURRENT_THRESHOLD);
+        }
     }
     
     if (is_idle) {
         model->idle_count++;
         if (model->idle_count >= IDLE_CONSECUTIVE_SAMPLES) {
+            if (model->motor_running) {
+                // Serial.println("[Motor] >>> STOPPED");
+            }
             model->motor_running = false;
             
-            // If in ALARM state and motor stopped -> WAITING_LABEL
             if (model->state == STATE_ALARM) {
                 model->state = STATE_WAITING_LABEL;
                 model->waiting_label = true;
                 model->buffer.frozen = true;
+                // Serial.println("[Motor] ALARM → WAITING_LABEL (motor stopped)");
             }
         }
     } else {
+        if (!model->motor_running && model->idle_count > 0) {
+            // Serial.println("[Motor] >>> RUNNING");
+        }
         model->idle_count = 0;
         model->motor_running = true;
         
-        // If was WAITING_LABEL and motor restarts -> back to ALARM
         if (model->state == STATE_WAITING_LABEL && model->alarm_active) {
             model->state = STATE_ALARM;
             model->waiting_label = false;
             model->buffer.frozen = false;
+            // Serial.println("[Motor] WAITING_LABEL → ALARM (motor restarted)");
         }
     }
 }
