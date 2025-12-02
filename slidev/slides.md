@@ -307,6 +307,40 @@ IMPORTANT: Anomaly samples get BUFFERED (up to 100) while waiting for operator. 
 
 ---
 
+# HITL: The State Machine
+
+Alarm ≠ Freeze. The system distinguishes between transient alarms and label-ready states.
+
+<div class="flex justify-center">
+<div class="w-140">
+
+```mermaid
+%%{init: {'themeVariables': { 'fontSize': '24px' }}}%%
+stateDiagram-v2
+    [*] --> NORMAL: Initialize K=1
+
+    NORMAL --> ALARM: Outlier detected
+    note right of ALARM: Motor running—<br/>Red banner<br/>on SCADA
+
+    ALARM --> NORMAL: Auto-clear
+
+    ALARM --> WAITING_LABEL: Motor stops
+    ALARM --> WAITING_LABEL: Operator hits Freeze
+    note left of WAITING_LABEL: Buffer Frozen<br/>Ready for input
+
+    WAITING_LABEL --> NORMAL: Label "Fault" → K++
+    WAITING_LABEL --> NORMAL: Discard
+```
+
+</div>
+</div>
+
+<!--
+And for the human in the loop part, the model initialised with one cluster, upon unsupervised abnormally detected, when the motor stopped, or when operator manually freeze the input, labelling can be done, where the model will learn if this cluster should be discarded, or learn as new cluster, or included into previous cluster.
+-->
+
+---
+
 # Human-in-the-Loop: Three Operator Actions
 
 When anomaly detected, system buffers samples. Operator inspects machine and chooses:
@@ -322,13 +356,6 @@ When anomaly detected, system buffers samples. Operator inspects machine and cho
 - Centroid = buffer average
 - Trained with N samples
 
-```
-Buffer: 87 samples
-    ↓
-K=3, "bearing_wear"
-count = 87
-```
-
 </div>
 
 <div class="p-4 border-2 border-blue-500 rounded text-sm">
@@ -339,13 +366,6 @@ count = 87
 - Trains cluster X with buffer
 - **K stays same**
 - Refines existing cluster
-
-```
-Buffer: 87 samples
-    ↓
-Cluster "unbalance"
-count += 87
-```
 
 </div>
 
@@ -358,25 +378,7 @@ count += 87
 - **K unchanged**
 - No learning
 
-```
-Buffer: 87 samples
-    ↓
-Deleted
-```
-
 </div>
-
-</div>
-
-<div class="flex justify-center mt-4">
-
-```mermaid
-flowchart LR
-    A[Anomaly<br/>Buffered] --> B{Operator Decision}
-    B -->|"New fault"| C[K++ new cluster]
-    B -->|"Known fault"| D[Train existing]
-    B -->|"Noise"| E[Discard buffer]
-```
 
 </div>
 
@@ -449,40 +451,6 @@ typedef struct {
 
 <!--
 Then we’ll optimise the algorithm for least memory consumption with standard ways, getting rid of floating point, avoid square root, EMA updates, static memory allocation, ring buffer. (More details explanations to be updated)
--->
-
----
-
-# HITL: The State Machine
-
-Alarm ≠ Freeze. The system distinguishes between transient alarms and label-ready states.
-
-<div class="flex justify-center">
-<div class="w-140">
-
-```mermaid
-%%{init: {'themeVariables': { 'fontSize': '24px' }}}%%
-stateDiagram-v2
-    [*] --> NORMAL: Initialize K=1
-
-    NORMAL --> ALARM: Outlier detected
-    note right of ALARM: Motor running—<br/>Red banner<br/>on SCADA
-
-    ALARM --> NORMAL: Auto-clear
-
-    ALARM --> WAITING_LABEL: Motor stops
-    ALARM --> WAITING_LABEL: Operator hits Freeze
-    note left of WAITING_LABEL: Buffer Frozen<br/>Ready for input
-
-    WAITING_LABEL --> NORMAL: Label "Fault" → K++
-    WAITING_LABEL --> NORMAL: Discard
-```
-
-</div>
-</div>
-
-<!--
-And for the human in the loop part, the model initialised with one cluster, upon unsupervised abnormally detected, when the motor stopped, or when operator manually freeze the input, labelling can be done, where the model will learn if this cluster should be discarded, or learn as new cluster, or included into previous cluster.
 -->
 
 ---
