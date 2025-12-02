@@ -415,11 +415,10 @@ CWRU workflow:
 ### Memory Layout
 
 ```c
-// Total: ~2.5 - 5 KB
 typedef struct {
-  cluster_t clusters[16];  // 1.0 KB
-  ring_buffer_t buffer;    // 1.2 KB
-  uint8_t k, feature_dim;  // 0.3 KB
+  cluster_t clusters[16];
+  ring_buffer_t buffer;
+  uint8_t k, feature_dim;
 } kmeans_model_t;
 ```
 
